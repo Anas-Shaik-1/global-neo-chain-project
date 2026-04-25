@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Build output
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Generated API clients
+Frontend/src/api/generated/
+
+# OpenAPI snapshot (generated on demand)
+Backend/openapi.json
+
+# Test coverage
+coverage/
