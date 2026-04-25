@@ -165,7 +165,7 @@ global-neo-chain-project/
 ### 4.1 Token strategy
 
 - **Access JWT.** 15-minute TTL. Returned in the `POST /auth/login` JSON body. Stored in `authSlice.accessToken` (in-memory only — never persisted, lost on tab close). Sent as `Authorization: Bearer <token>` by the axios interceptor on every request.
-- **Refresh JWT.** 7-day TTL. Issued only as `Set-Cookie: refresh=<token>; HttpOnly; Secure; SameSite=Strict; Path=/auth/refresh`. Never visible to JS. Carries a unique `jti` and a `family` id (rotation).
+- **Refresh JWT.** 7-day TTL. Issued only as `Set-Cookie: refresh=<token>; HttpOnly; Secure; SameSite=Strict; Path=/auth`. Never visible to JS. Carries a unique `jti` and a `family` id (rotation). Cookie path scoped to `/auth` (not `/auth/refresh`) so `/auth/logout` and `/auth/me` can read it when needed.
 
 ### 4.2 Endpoints (under `/auth`, OpenAPI tag `auth`)
 
@@ -212,8 +212,8 @@ export type Role = typeof Role[number];
 
 - Stored on `User.role` (Mongoose enum).
 - Backend: `requireRole(...allowed: Role[])` middleware short-circuits with 403 if `req.user.role` is not in the allowed list.
-- Frontend: `<ProtectedRoute roles={["ADMIN"]}>` wrapper performs the same check; if the user is authenticated but lacks the role, renders a 403 `EmptyState` instead of redirecting.
-- Foundation does **not** ship per-route role gates (every route is open to any authenticated user). Feature sub-projects layer them on as needed.
+- Frontend: `<ProtectedRoute roles?: Role[]>` wrapper. If `roles` is omitted (the Foundation default), it only requires authentication. If present, an authenticated user lacking any allowed role sees a 403 `EmptyState` instead of redirecting.
+- Foundation ships the `roles?` prop API but does **not** use it on any route — every authenticated user can reach every page. Feature sub-projects pass `roles={[...]}` when they need to gate.
 - The legacy `GUEST` role is dropped (it was never used).
 
 ## 7. Realtime Scaffolding
@@ -271,7 +271,7 @@ export type Role = typeof Role[number];
 ## 9. OpenAPI Pipeline
 
 ### 9.1 Backend
-- `@asteasolutions/zod-to-openapi` (or equivalent `zod-openapi`) maintains a singleton `OpenAPIRegistry`. Each module's `*.schema.ts` registers paths and components.
+- `@asteasolutions/zod-to-openapi` maintains a singleton `OpenAPIRegistry`. Each module's `*.schema.ts` registers paths and components.
 - `openapi/spec.ts` builds the OpenAPI document at app boot and serves it at `GET /openapi.json` and Swagger UI at `GET /docs`.
 - The spec lives only at runtime; no committed `openapi.json`. `pnpm gen:spec` (optional) writes a snapshot for tooling that needs a static file.
 
