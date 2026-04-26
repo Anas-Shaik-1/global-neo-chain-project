@@ -1,4 +1,7 @@
 import rateLimit from "express-rate-limit";
+import { config } from "../config/index.js";
+
+const isTest = config.NODE_ENV === "test";
 
 export const authLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -6,6 +9,7 @@ export const authLimiter = rateLimit({
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: { code: "RATE_LIMITED", message: "Too many auth attempts" },
+  skip: () => isTest,
 });
 
 export const globalLimiter = rateLimit({
@@ -13,4 +17,5 @@ export const globalLimiter = rateLimit({
   limit: 300,
   standardHeaders: "draft-7",
   legacyHeaders: false,
+  skip: () => isTest,
 });
