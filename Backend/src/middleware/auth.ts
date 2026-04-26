@@ -3,9 +3,11 @@ import { verifyAccessToken } from "../lib/tokens.js";
 import { UnauthorizedError } from "../lib/errors.js";
 import { ROLES, type Role } from "../models/user.model.js";
 
-declare module "express-serve-static-core" {
-  interface Request {
-    user?: { id: string; role: Role };
+declare global {
+  namespace Express {
+    interface Request {
+      user?: { id: string; role: Role };
+    }
   }
 }
 

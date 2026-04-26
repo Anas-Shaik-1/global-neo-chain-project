@@ -2,9 +2,11 @@ import type { RequestHandler } from "express";
 import type { ZodSchema } from "zod";
 import { ValidationError } from "../lib/errors.js";
 
-declare module "express-serve-static-core" {
-  interface Request {
-    validated?: unknown;
+declare global {
+  namespace Express {
+    interface Request {
+      validated?: unknown;
+    }
   }
 }
 
