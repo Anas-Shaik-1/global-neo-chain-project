@@ -92,7 +92,7 @@ describe("/auth routes", () => {
     const login = await request(app)
       .post("/auth/login")
       .send({ email: "admin@sms-ip.local", password: "ChangeMe-Admin-1!" });
-    const stale = login.headers["set-cookie"];
+    const stale = login.headers["set-cookie"]!;
     await request(app).post("/auth/refresh").set("Cookie", stale);
     const reuse = await request(app).post("/auth/refresh").set("Cookie", stale);
     expect(reuse.status).toBe(401);
@@ -123,7 +123,7 @@ describe("/auth routes", () => {
     const login = await request(app)
       .post("/auth/login")
       .send({ email: "admin@sms-ip.local", password: "ChangeMe-Admin-1!" });
-    const cookie = login.headers["set-cookie"];
+    const cookie = login.headers["set-cookie"]!;
     const out = await request(app).post("/auth/logout").set("Cookie", cookie);
     expect(out.status).toBe(204);
     const reuse = await request(app).post("/auth/refresh").set("Cookie", cookie);

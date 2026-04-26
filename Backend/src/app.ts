@@ -2,7 +2,7 @@ import express from "express";
 import helmet from "helmet";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-import pinoHttp from "pino-http";
+import { pinoHttp } from "pino-http";
 import swaggerUi from "swagger-ui-express";
 import { config } from "./config/index.js";
 import { logger } from "./lib/logger.js";
