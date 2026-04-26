@@ -67,4 +67,16 @@ describe("auth + requireRole middleware", () => {
     const res = await request(app).get("/").set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(403);
   });
+
+  it("rejects bearer with role outside ROLES enum", async () => {
+    const { requireAuth } = await import("./auth.js");
+    const { errorHandler } = await import("./error.js");
+    const { signAccessToken } = await import("../lib/tokens.js");
+    const token = signAccessToken({ sub: "u1", role: "GUEST" }); // GUEST is not in ROLES
+    const app = express();
+    app.get("/", requireAuth, (_req, res) => res.json({ ok: true }));
+    app.use(errorHandler);
+    const res = await request(app).get("/").set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(401);
+  });
 });

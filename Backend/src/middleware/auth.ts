@@ -1,7 +1,7 @@
 import type { RequestHandler } from "express";
 import { verifyAccessToken } from "../lib/tokens.js";
 import { UnauthorizedError } from "../lib/errors.js";
-import type { Role } from "../models/user.model.js";
+import { ROLES, type Role } from "../models/user.model.js";
 
 declare module "express-serve-static-core" {
   interface Request {
@@ -17,6 +17,9 @@ export const requireAuth: RequestHandler = (req, _res, next) => {
   const token = header.slice("Bearer ".length);
   try {
     const payload = verifyAccessToken(token);
+    if (!(ROLES as readonly string[]).includes(payload.role)) {
+      return next(new UnauthorizedError("Invalid or expired token"));
+    }
     req.user = { id: payload.sub, role: payload.role as Role };
     next();
   } catch {
