@@ -55,31 +55,39 @@ export async function rotate(rawRefreshToken: string): Promise<{ accessToken: st
     throw new UnauthorizedError("Invalid refresh");
   }
 
-  const stored = await RefreshToken.findOne({ jti: payload.jti });
-  if (!stored) throw new UnauthorizedError("Unknown refresh");
+  const newRefreshJti = newJti();
 
-  if (stored.revokedAt !== null) {
-    await RefreshToken.updateMany(
-      { family: stored.family, revokedAt: null },
-      { $set: { revokedAt: new Date() } },
-    );
-    throw new UnauthorizedError("Refresh reuse detected");
+  // Atomic claim: only the first concurrent caller flips revokedAt from null → set.
+  const claimed = await RefreshToken.findOneAndUpdate(
+    { jti: payload.jti, revokedAt: null },
+    { $set: { revokedAt: new Date(), replacedBy: newRefreshJti } },
+    { new: false },
+  );
+
+  if (!claimed) {
+    // No matching un-revoked token. Either the jti was never issued (forged/expired family),
+    // or it was already revoked (reuse). Discriminate to drive the right policy.
+    const reused = await RefreshToken.findOne({ jti: payload.jti });
+    if (reused) {
+      // Reuse detected: revoke the entire family.
+      await RefreshToken.updateMany(
+        { family: reused.family, revokedAt: null },
+        { $set: { revokedAt: new Date() } },
+      );
+      throw new UnauthorizedError("Refresh reuse detected");
+    }
+    throw new UnauthorizedError("Unknown refresh");
   }
 
-  const user = await User.findById(stored.userId);
+  const user = await User.findById(claimed.userId);
   if (!user) throw new UnauthorizedError("User not found");
 
-  const newRefreshJti = newJti();
   const accessToken = signAccessToken({ sub: user._id.toString(), role: user.role });
-  const refreshToken = signRefreshToken({ sub: user._id.toString(), jti: newRefreshJti, family: stored.family });
-
-  stored.revokedAt = new Date();
-  stored.replacedBy = newRefreshJti;
-  await stored.save();
+  const refreshToken = signRefreshToken({ sub: user._id.toString(), jti: newRefreshJti, family: claimed.family });
 
   await RefreshToken.create({
     jti: newRefreshJti,
-    family: stored.family,
+    family: claimed.family,
     userId: user._id,
     expiresAt: new Date(Date.now() + REFRESH_TTL_MS),
   });

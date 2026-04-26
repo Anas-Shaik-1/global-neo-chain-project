@@ -99,4 +99,27 @@ describe("auth.service", () => {
     expect(me.email).toBe("a@b.com");
     expect(me.role).toBe("ADMIN");
   });
+
+  it("rotate handles concurrent calls with the same refresh: one succeeds, the other is detected as reuse", async () => {
+    await seedUser("a@b.com", "pw");
+    const { login, rotate } = await import("./auth.service.js");
+    const { RefreshToken } = await import("../../models/refreshToken.model.js");
+    const first = await login("a@b.com", "pw");
+
+    // Two concurrent rotations with the same refresh token
+    const results = await Promise.allSettled([
+      rotate(first.refreshToken),
+      rotate(first.refreshToken),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(fulfilled.length).toBe(1);
+    expect(rejected.length).toBe(1);
+
+    // After concurrent rotation, the one that lost should have triggered family revoke.
+    // The winning rotation produced one new active token; the losing one revoked it as reuse.
+    const remaining = await RefreshToken.find({ revokedAt: null });
+    expect(remaining.length).toBe(0);
+  });
 });
