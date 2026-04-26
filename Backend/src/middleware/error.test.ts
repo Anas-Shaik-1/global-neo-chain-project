@@ -41,4 +41,56 @@ describe("error middleware", () => {
     expect(res.status).toBe(500);
     expect(res.body.code).toBe("INTERNAL");
   });
+
+  it("renders a raw ZodError as 400 VALIDATION", async () => {
+    const { errorHandler } = await import("./error.js");
+    const { z } = await import("zod");
+    const app = express();
+    app.get("/", (_req, _res, next) => {
+      const result = z.object({ n: z.number() }).safeParse({ n: "x" });
+      if (!result.success) return next(result.error);
+      next();
+    });
+    app.use(errorHandler);
+    const res = await request(app).get("/");
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("VALIDATION");
+    expect(res.body.message).toBe("Validation failed");
+    expect(res.body.details).toBeDefined();
+  });
+
+  it("renders a Mongoose ValidationError as 400 VALIDATION", async () => {
+    const { errorHandler } = await import("./error.js");
+    const mongooseLib = await import("mongoose");
+    const app = express();
+    app.get("/", (_req, _res, next) => {
+      const err = new mongooseLib.default.Error.ValidationError();
+      err.errors = {
+        email: new mongooseLib.default.Error.ValidatorError({ message: "bad email", path: "email" }),
+      } as never;
+      next(err);
+    });
+    app.use(errorHandler);
+    const res = await request(app).get("/");
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("VALIDATION");
+    expect(res.body.details).toBeDefined();
+  });
+
+  it("renders Mongo E11000 duplicate-key as 409 CONFLICT with field name", async () => {
+    const { errorHandler } = await import("./error.js");
+    const app = express();
+    app.get("/", (_req, _res, next) => {
+      const err = Object.assign(new Error("E11000 duplicate key"), {
+        code: 11000,
+        keyPattern: { email: 1 },
+      });
+      next(err);
+    });
+    app.use(errorHandler);
+    const res = await request(app).get("/");
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("CONFLICT");
+    expect(res.body.message).toMatch(/email/);
+  });
 });
