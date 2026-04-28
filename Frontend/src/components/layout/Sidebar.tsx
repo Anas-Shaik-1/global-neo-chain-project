@@ -15,7 +15,8 @@ import { Logo } from "@/components/brand/Logo";
 import { RoleGate } from "@/features/auth/RoleGate";
 
 const ACTIVE_NAV = [
-  { to: "/profile", label: "Profile", Icon: User, roles: undefined as undefined | ("HR" | "ADMIN")[] },
+  { to: "/dashboard", label: "Dashboard", Icon: LayoutDashboard, roles: undefined as undefined | ("HR" | "ADMIN")[] },
+  { to: "/profile", label: "Profile", Icon: User, roles: undefined },
   { to: "/people", label: "People", Icon: Users, roles: undefined },
   { to: "/departments", label: "Departments", Icon: Building2, roles: ["HR", "ADMIN"] as ("HR" | "ADMIN")[] },
   { to: "/attendance", label: "Attendance", Icon: CalendarClock, roles: undefined },
@@ -25,9 +26,7 @@ const ACTIVE_NAV = [
   { to: "/payroll", label: "Payroll", Icon: BadgeDollarSign, roles: undefined },
 ];
 
-const STUB_NAV = [
-  { to: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
-];
+const STUB_NAV: { to: string; label: string; Icon: typeof LayoutDashboard }[] = [];
 
 const SECTION_LABEL_CLASS =
   "px-3 pb-2 pt-1 font-display text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80";
@@ -63,18 +62,22 @@ export function Sidebar() {
             ? <RoleGate key={to} roles={roles}>{link}</RoleGate>
             : link;
         })}
-        <div className="pt-4" />
-        <div className={SECTION_LABEL_CLASS}>Coming soon</div>
-        {STUB_NAV.map(({ to, label, Icon }) => (
-          <div
-            key={to}
-            className="flex cursor-not-allowed items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground opacity-50"
-            title={`${label} — coming soon`}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </div>
-        ))}
+        {STUB_NAV.length > 0 && (
+          <>
+            <div className="pt-4" />
+            <div className={SECTION_LABEL_CLASS}>Coming soon</div>
+            {STUB_NAV.map(({ to, label, Icon }) => (
+              <div
+                key={to}
+                className="flex cursor-not-allowed items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground opacity-50"
+                title={`${label} — coming soon`}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </div>
+            ))}
+          </>
+        )}
       </nav>
     </aside>
   );

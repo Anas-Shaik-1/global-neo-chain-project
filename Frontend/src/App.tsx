@@ -20,6 +20,7 @@ import { TasksPage } from "@/features/tasks/pages/TasksPage";
 import { ExpensesPage } from "@/features/expenses/pages/ExpensesPage";
 import { PayrollPage } from "@/features/payroll/pages/PayrollPage";
 import { MessagesPage } from "@/features/chat/pages/MessagesPage";
+import { DashboardPage } from "@/features/dashboard/pages/DashboardPage";
 import { RoleGate } from "@/features/auth/RoleGate";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
@@ -31,7 +32,7 @@ function Routed() {
       <Route path="/login" element={<LoginPage />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
-          <Route path="/" element={<Navigate to="/profile" replace />} />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/people" element={<PeopleListPage />} />
           <Route
@@ -51,7 +52,7 @@ function Routed() {
               </RoleGate>
             }
           />
-          <Route path="/dashboard" element={<EmptyState label="Dashboard" />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/tasks" element={<TasksPage />} />
           <Route path="/messages" element={<MessagesPage />} />
           <Route path="/attendance" element={<AttendancePage />} />
