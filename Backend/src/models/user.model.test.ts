@@ -54,4 +54,31 @@ describe("User model", () => {
     const fetched = await User.findOne({ email: "a@b.com" });
     expect(fetched?.passwordHash).toBeUndefined();
   });
+
+  it("accepts profile fields including emergencyContact subdoc", async () => {
+    const { User } = await import("./user.model.js");
+    const u = await User.create({
+      email: "p@b.com",
+      passwordHash: "x",
+      name: "P",
+      jobTitle: "Engineer",
+      phone: "+91 555 0100",
+      bio: "Builds things",
+      hireDate: new Date("2024-01-15"),
+      dateOfBirth: new Date("1990-05-10"),
+      address: "1 Some St",
+      employmentType: "FULL_TIME",
+      emergencyContact: { name: "C", phone: "999", relationship: "spouse" },
+    });
+    expect(u.jobTitle).toBe("Engineer");
+    expect(u.emergencyContact?.name).toBe("C");
+    expect(u.isActive).toBe(true);
+  });
+
+  it("rejects invalid employmentType", async () => {
+    const { User } = await import("./user.model.js");
+    await expect(
+      User.create({ email: "p2@b.com", passwordHash: "x", name: "P", employmentType: "FREELANCE" as never }),
+    ).rejects.toThrow();
+  });
 });
