@@ -4,3 +4,4 @@ coverage
 .env
 src/api/generated
 .vite
+*.tsbuildinfo
