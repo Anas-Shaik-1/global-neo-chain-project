@@ -120,7 +120,7 @@ export interface CreateInput {
 }
 
 export async function createEmployee(input: CreateInput): Promise<{ profile: FullShape; tempPassword: string }> {
-  const tempPassword = crypto.randomBytes(12).toString("base64").replace(/[+/=]/g, "").slice(0, 16);
+  const tempPassword = crypto.randomBytes(16).toString("base64url").slice(0, 16);
   const passwordHash = await bcrypt.hash(tempPassword, 12);
   try {
     const created = await User.create({
