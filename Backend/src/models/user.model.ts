@@ -30,7 +30,7 @@ const userSchema = new Schema(
     bio: { type: String, trim: true, maxlength: 500 },
     avatarUrl: { type: String },
     avatarKey: { type: String, select: false },
-    departmentId: { type: Schema.Types.ObjectId, ref: "Department", default: null },
+    departmentId: { type: Schema.Types.ObjectId, ref: "Department", default: null, index: true },
 
     // Sensitive (self + HR + Admin)
     hireDate: { type: Date },
