@@ -56,7 +56,13 @@ export function toFullProfile(u: UserDoc, departmentName: string | null): FullSh
     dateOfBirth: u.dateOfBirth ?? null,
     address: u.address ?? null,
     employmentType: u.employmentType ?? null,
-    emergencyContact: u.emergencyContact ?? null,
+    emergencyContact: u.emergencyContact
+      ? {
+          name: u.emergencyContact.name ?? undefined,
+          phone: u.emergencyContact.phone ?? undefined,
+          relationship: u.emergencyContact.relationship ?? undefined,
+        }
+      : null,
     resumeUrl: u.resumeUrl ?? null,
     createdAt: d.createdAt,
     updatedAt: d.updatedAt,

@@ -13,11 +13,15 @@ function requireUser(req: Request) {
 
 export async function getList(req: Request, res: Response, next: NextFunction) {
   try {
+    const q = typeof req.query.q === "string" ? req.query.q : undefined;
+    const department = typeof req.query.department === "string" ? req.query.department : undefined;
+    const page = typeof req.query.page === "string" ? Number(req.query.page) : undefined;
+    const limit = typeof req.query.limit === "string" ? Number(req.query.limit) : undefined;
     const result = await svc.listEmployees({
-      q: typeof req.query.q === "string" ? req.query.q : undefined,
-      departmentId: typeof req.query.department === "string" ? req.query.department : undefined,
-      page: req.query.page ? Number(req.query.page) : undefined,
-      limit: req.query.limit ? Number(req.query.limit) : undefined,
+      q,
+      departmentId: department,
+      page,
+      limit,
     });
     res.json(result);
   } catch (err) {
@@ -28,7 +32,8 @@ export async function getList(req: Request, res: Response, next: NextFunction) {
 export async function getOne(req: Request, res: Response, next: NextFunction) {
   try {
     const me = requireUser(req);
-    const profile = await svc.getEmployee(req.params.id!, me);
+    const id = req.params.id as string;
+    const profile = await svc.getEmployee(id, me);
     res.json(profile);
   } catch (err) {
     next(err);
@@ -48,7 +53,8 @@ export async function postCreate(req: Request, res: Response, next: NextFunction
 export async function patchOne(req: Request, res: Response, next: NextFunction) {
   try {
     const me = requireUser(req);
-    const profile = await svc.updateEmployee(req.params.id!, req.validated as Record<string, unknown>, me);
+    const id = req.params.id as string;
+    const profile = await svc.updateEmployee(id, req.validated as Record<string, unknown>, me);
     res.json(profile);
   } catch (err) {
     next(err);
@@ -57,7 +63,8 @@ export async function patchOne(req: Request, res: Response, next: NextFunction) 
 
 export async function postDeactivate(req: Request, res: Response, next: NextFunction) {
   try {
-    await svc.deactivate(req.params.id!);
+    const id = req.params.id as string;
+    await svc.deactivate(id);
     res.status(204).send();
   } catch (err) {
     next(err);
@@ -75,7 +82,7 @@ export async function postAvatar(req: Request, res: Response, next: NextFunction
     await ensureSelfOrElevated(req);
     const file = req.file;
     if (!file) throw new ValidationError("Missing file");
-    const userId = req.params.id!;
+    const userId = req.params.id as string;
     const u = await User.findById(userId).select("+avatarKey");
     if (!u) throw new NotFoundError("Employee");
     const saved = await storage.save("avatar", userId, {
@@ -113,7 +120,7 @@ export async function postResume(req: Request, res: Response, next: NextFunction
     await ensureSelfOrElevated(req);
     const file = req.file;
     if (!file) throw new ValidationError("Missing file");
-    const userId = req.params.id!;
+    const userId = req.params.id as string;
     const u = await User.findById(userId).select("+resumeKey");
     if (!u) throw new NotFoundError("Employee");
     const saved = await storage.save("resume", userId, {
@@ -149,8 +156,9 @@ export async function deleteResume(req: Request, res: Response, next: NextFuncti
 export async function getPositions(req: Request, res: Response, next: NextFunction) {
   try {
     const me = requireUser(req);
-    if (!svc.canSeeFullProfile(me, req.params.id!)) throw new ForbiddenError();
-    const positions = await svc.listPositions(req.params.id!);
+    const id = req.params.id as string;
+    if (!svc.canSeeFullProfile(me, id)) throw new ForbiddenError();
+    const positions = await svc.listPositions(id);
     res.json(positions);
   } catch (err) {
     next(err);
@@ -160,7 +168,8 @@ export async function getPositions(req: Request, res: Response, next: NextFuncti
 export async function postPosition(req: Request, res: Response, next: NextFunction) {
   try {
     const body = req.validated as svc.AddPositionInput;
-    const p = await svc.addPosition(req.params.id!, body);
+    const id = req.params.id as string;
+    const p = await svc.addPosition(id, body);
     res.status(201).json({
       id: p._id.toString(),
       userId: p.userId.toString(),
@@ -178,7 +187,8 @@ export async function postPosition(req: Request, res: Response, next: NextFuncti
 
 export async function patchPosition(req: Request, res: Response, next: NextFunction) {
   try {
-    const p = await svc.updatePosition(req.params.id!, req.validated as Partial<svc.AddPositionInput>);
+    const id = req.params.id as string;
+    const p = await svc.updatePosition(id, req.validated as Partial<svc.AddPositionInput>);
     res.json({
       id: p._id.toString(),
       userId: p.userId.toString(),

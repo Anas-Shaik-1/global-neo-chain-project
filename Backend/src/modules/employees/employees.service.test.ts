@@ -43,8 +43,8 @@ describe("employees.service projection helpers", () => {
     const u = await seedUser();
     const { toPublicProfile } = await import("./employees.service.js");
     const p = toPublicProfile(u, null);
-    expect((p as Record<string, unknown>).dateOfBirth).toBeUndefined();
-    expect((p as Record<string, unknown>).address).toBeUndefined();
+    expect((p as unknown as Record<string, unknown>).dateOfBirth).toBeUndefined();
+    expect((p as unknown as Record<string, unknown>).address).toBeUndefined();
     expect(p.email).toBe(u.email);
     expect(p.role).toBe("EMPLOYEE");
   });

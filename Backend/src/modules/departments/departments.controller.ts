@@ -3,9 +3,11 @@ import * as svc from "./departments.service.js";
 
 export async function getList(req: Request, res: Response, next: NextFunction) {
   try {
+    const page = typeof req.query.page === "string" ? Number(req.query.page) : undefined;
+    const limit = typeof req.query.limit === "string" ? Number(req.query.limit) : undefined;
     const result = await svc.listDepartments({
-      page: req.query.page ? Number(req.query.page) : undefined,
-      limit: req.query.limit ? Number(req.query.limit) : undefined,
+      page,
+      limit,
     });
     res.json(result);
   } catch (err) {
@@ -24,7 +26,8 @@ export async function postCreate(req: Request, res: Response, next: NextFunction
 
 export async function patchOne(req: Request, res: Response, next: NextFunction) {
   try {
-    const dept = await svc.updateDepartment(req.params.id!, req.validated as svc.UpdateDeptInput);
+    const id = req.params.id as string;
+    const dept = await svc.updateDepartment(id, req.validated as svc.UpdateDeptInput);
     res.json(dept);
   } catch (err) {
     next(err);
@@ -33,7 +36,8 @@ export async function patchOne(req: Request, res: Response, next: NextFunction) 
 
 export async function deleteOne(req: Request, res: Response, next: NextFunction) {
   try {
-    await svc.deleteDepartment(req.params.id!);
+    const id = req.params.id as string;
+    await svc.deleteDepartment(id);
     res.status(204).send();
   } catch (err) {
     next(err);
