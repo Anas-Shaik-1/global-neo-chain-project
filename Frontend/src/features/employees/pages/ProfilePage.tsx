@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/common/PageHeader";
 import { useAppSelector } from "@/app/hooks";
 import { useEmployee, useUpdateEmployee } from "../api/hooks";
 import { AvatarUpload } from "../components/AvatarUpload";
@@ -31,43 +32,46 @@ export function ProfilePage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <Card>
-        <CardHeader><CardTitle>My Profile</CardTitle></CardHeader>
-        <CardContent className="space-y-6">
-          <AvatarUpload userId={data.id} currentUrl={data.avatarUrl} fallback={fallbackInitials} />
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
-              <Input id="name" defaultValue={data.name} onChange={(e) => setName(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" value={data.email} disabled />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone</Label>
-              <Input id="phone" defaultValue={data.phone ?? ""} onChange={(e) => setPhone(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="jobTitle">Job title</Label>
-              <Input id="jobTitle" value={data.jobTitle ?? ""} disabled />
-            </div>
-            <div className="col-span-full space-y-2">
-              <Label htmlFor="bio">Bio</Label>
-              <textarea
-                id="bio"
-                className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                defaultValue={data.bio ?? ""}
-                onChange={(e) => setBio(e.target.value)}
-              />
-            </div>
+    <div className="mx-auto max-w-3xl space-y-8">
+      <PageHeader
+        title="My profile"
+        description="Keep your contact details, bio and resume up to date — your team sees this in the directory."
+      />
+
+      <section className="space-y-6">
+        <AvatarUpload userId={data.id} currentUrl={data.avatarUrl} fallback={fallbackInitials} />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="name">Name</Label>
+            <Input id="name" defaultValue={data.name} onChange={(e) => setName(e.target.value)} />
           </div>
-          <Button onClick={onSave} disabled={update.isPending}>
-            {update.isPending ? "Saving…" : "Save changes"}
-          </Button>
-        </CardContent>
-      </Card>
+          <div className="space-y-2">
+            <Label htmlFor="email">Email</Label>
+            <Input id="email" value={data.email} disabled className="font-mono text-xs" />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="phone">Phone</Label>
+            <Input id="phone" defaultValue={data.phone ?? ""} onChange={(e) => setPhone(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="jobTitle">Job title</Label>
+            <Input id="jobTitle" value={data.jobTitle ?? ""} disabled />
+          </div>
+          <div className="col-span-full space-y-2">
+            <Label htmlFor="bio">Bio</Label>
+            <textarea
+              id="bio"
+              className="flex min-h-[96px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              defaultValue={data.bio ?? ""}
+              onChange={(e) => setBio(e.target.value)}
+              placeholder="A short intro for your colleagues."
+            />
+          </div>
+        </div>
+        <Button onClick={onSave} disabled={update.isPending}>
+          {update.isPending ? "Saving…" : "Save changes"}
+        </Button>
+      </section>
 
       <Card>
         <CardHeader><CardTitle>Resume</CardTitle></CardHeader>

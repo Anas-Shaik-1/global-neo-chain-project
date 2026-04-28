@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/common/StatusBadge";
 import { useAppSelector } from "@/app/hooks";
 import { useEmployee, useDeactivateEmployee, type FullProfile } from "../api/hooks";
 
@@ -24,17 +25,24 @@ export function EmployeeDetailPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <Card>
+      <Card className="relative overflow-hidden">
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
         <CardHeader>
           <div className="flex items-center gap-4">
             <Avatar className="h-20 w-20">
               {data.avatarUrl ? <AvatarImage src={data.avatarUrl} alt="" /> : null}
               <AvatarFallback className="text-xl">{initials}</AvatarFallback>
             </Avatar>
-            <div>
-              <CardTitle>{data.name}</CardTitle>
-              <div className="text-muted-foreground">{data.jobTitle ?? "—"} · {data.departmentName ?? "—"}</div>
-              {!data.isActive && <span className="text-sm text-destructive">Inactive</span>}
+            <div className="flex flex-col gap-2">
+              <CardTitle className="font-display text-3xl font-semibold tracking-tight">
+                {data.name}
+              </CardTitle>
+              <div className="text-muted-foreground">
+                {data.jobTitle ?? "—"} · {data.departmentName ?? "—"}
+              </div>
+              <StatusBadge tone={data.isActive ? "success" : "default"}>
+                {data.isActive ? "Active" : "Inactive"}
+              </StatusBadge>
             </div>
           </div>
         </CardHeader>

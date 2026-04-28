@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/brand/Logo";
-import { Separator } from "@/components/ui/separator";
 import { RoleGate } from "@/features/auth/RoleGate";
 
 const ACTIVE_NAV = [
@@ -30,14 +29,18 @@ const STUB_NAV = [
   { to: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
 ];
 
+const SECTION_LABEL_CLASS =
+  "px-3 pb-2 pt-1 font-display text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80";
+
 export function Sidebar() {
   return (
     <aside className="hidden h-screen w-60 shrink-0 flex-col border-r border-border bg-card lg:flex">
       <div className="px-4 py-5">
         <Logo isClickable showTagline={false} />
       </div>
-      <Separator />
-      <nav className="flex-1 space-y-1 px-3 py-4">
+      <div className="h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+      <nav className="flex-1 space-y-0.5 px-3 py-4">
+        <div className={SECTION_LABEL_CLASS}>Workspace</div>
         {ACTIVE_NAV.map(({ to, label, Icon, roles }) => {
           const link = (
             <NavLink
@@ -45,9 +48,9 @@ export function Sidebar() {
               to={to}
               className={({ isActive }) =>
                 cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                  "relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                   isActive
-                    ? "bg-primary/10 text-primary"
+                    ? "bg-primary/10 text-primary before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-[2px] before:rounded-full before:bg-primary"
                     : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
                 )
               }
@@ -60,8 +63,8 @@ export function Sidebar() {
             ? <RoleGate key={to} roles={roles}>{link}</RoleGate>
             : link;
         })}
-        <Separator className="my-2" />
-        <div className="px-3 py-1 text-xs uppercase tracking-wider text-muted-foreground">Coming soon</div>
+        <div className="pt-4" />
+        <div className={SECTION_LABEL_CLASS}>Coming soon</div>
         {STUB_NAV.map(({ to, label, Icon }) => (
           <div
             key={to}

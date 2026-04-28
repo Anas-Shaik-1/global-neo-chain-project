@@ -1,25 +1,16 @@
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { StatusBadge as CommonStatusBadge } from "@/components/common/StatusBadge";
 import type { Expense, ExpenseStatus } from "../api/hooks";
 
-const STATUS_STYLES: Record<ExpenseStatus, string> = {
-  PENDING: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-  APPROVED: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-  REJECTED: "bg-red-500/15 text-red-600 dark:text-red-400",
-};
+const STATUS_TONES = {
+  PENDING: "warn",
+  APPROVED: "success",
+  REJECTED: "danger",
+} as const satisfies Record<ExpenseStatus, "warn" | "success" | "danger">;
 
 export function StatusBadge({ status }: { status: ExpenseStatus }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium",
-        STATUS_STYLES[status],
-      )}
-    >
-      {status}
-    </span>
-  );
+  return <CommonStatusBadge tone={STATUS_TONES[status]}>{status}</CommonStatusBadge>;
 }
 
 function formatAmount(amount: number, currency: string): string {

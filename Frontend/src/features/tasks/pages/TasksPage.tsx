@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/common/PageHeader";
 import { RoleGate } from "@/features/auth/RoleGate";
 import { KanbanBoard } from "../components/KanbanBoard";
 import { CreateProjectDialog } from "../components/CreateProjectDialog";
@@ -42,10 +43,11 @@ export function TasksPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle>Tasks</CardTitle>
+    <div className="space-y-6">
+      <PageHeader
+        title="Tasks"
+        description="Plan and track work across projects."
+        actions={
           <div className="flex flex-wrap items-center gap-2">
             <select
               value={selectedProjectId}
@@ -77,8 +79,11 @@ export function TasksPage() {
               + New task
             </Button>
           </div>
-        </CardHeader>
-        <CardContent>
+        }
+      />
+
+      <Card>
+        <CardContent className="pt-6">
           {projectsQ.isLoading ? (
             <Skeleton className="h-64 w-full" />
           ) : !hasProjects ? (

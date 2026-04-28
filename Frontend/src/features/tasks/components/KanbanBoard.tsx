@@ -2,21 +2,33 @@ import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import type { Task, TaskStatus, TaskPriority } from "../api/hooks";
 
-const COLUMNS: { id: TaskStatus; label: string }[] = [
-  { id: "TODO", label: "To do" },
-  { id: "IN_PROGRESS", label: "In progress" },
-  { id: "DONE", label: "Done" },
+const COLUMNS: { id: TaskStatus; label: string; dot: string }[] = [
+  { id: "TODO", label: "To do", dot: "bg-muted-foreground/60" },
+  { id: "IN_PROGRESS", label: "In progress", dot: "bg-amber-400" },
+  { id: "DONE", label: "Done", dot: "bg-emerald-400" },
 ];
 
-function priorityClasses(priority: TaskPriority): string {
+function priorityChipClasses(priority: TaskPriority): string {
   switch (priority) {
     case "HIGH":
       return "bg-destructive/15 text-destructive border-destructive/30";
     case "MEDIUM":
-      return "bg-accent text-accent-foreground border-border";
+      return "bg-primary/15 text-primary border-primary/30";
     case "LOW":
     default:
       return "bg-muted text-muted-foreground border-border";
+  }
+}
+
+function priorityStripClasses(priority: TaskPriority): string {
+  switch (priority) {
+    case "HIGH":
+      return "bg-destructive";
+    case "MEDIUM":
+      return "bg-primary";
+    case "LOW":
+    default:
+      return "bg-muted-foreground/30";
   }
 }
 
@@ -44,14 +56,21 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="w-full rounded-md border border-border bg-card p-3 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-accent/50 focus:outline-none focus:ring-2 focus:ring-ring"
+      className="group relative w-full overflow-hidden rounded-lg border border-border bg-card pl-4 pr-3 py-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:bg-accent/40 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-ring"
     >
+      <span
+        aria-hidden
+        className={cn(
+          "absolute left-0 top-0 h-full w-[2px]",
+          priorityStripClasses(task.priority),
+        )}
+      />
       <div className="flex items-start justify-between gap-2">
         <span className="line-clamp-2 text-sm font-medium leading-snug">{task.title}</span>
         <span
           className={cn(
             "shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-            priorityClasses(task.priority),
+            priorityChipClasses(task.priority),
           )}
         >
           {task.priority}
@@ -61,7 +80,7 @@ function TaskCard({ task, onClick }: { task: Task; onClick: () => void }) {
         <Avatar className="h-6 w-6">
           <AvatarFallback className="text-[10px]">{initialsOf(task.assigneeName)}</AvatarFallback>
         </Avatar>
-        {due && <span className="text-xs text-muted-foreground">{due}</span>}
+        {due && <span className="font-mono text-xs text-muted-foreground">{due}</span>}
       </div>
     </button>
   );
@@ -79,17 +98,22 @@ export function KanbanBoard({ tasks, onCardClick, onColumnAdd }: Props) {
       {COLUMNS.map((col) => {
         const columnTasks = tasks.filter((t) => t.status === col.id);
         return (
-          <div key={col.id} className="rounded-lg border border-border bg-muted/30 p-3">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="text-sm font-semibold">
-                {col.label}
-                <span className="ml-2 text-xs text-muted-foreground">{columnTasks.length}</span>
+          <div key={col.id} className="rounded-lg border border-border bg-muted/20 p-3">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className={cn("h-1.5 w-1.5 rounded-full", col.dot)} />
+                <span className="font-display text-sm font-semibold uppercase tracking-wider">
+                  {col.label}
+                </span>
+                <span className="rounded-full bg-background px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground">
+                  {columnTasks.length}
+                </span>
               </div>
               {onColumnAdd && (
                 <button
                   type="button"
                   onClick={() => onColumnAdd(col.id)}
-                  className="text-xs text-muted-foreground hover:text-foreground"
+                  className="text-xs text-muted-foreground transition-colors hover:text-foreground"
                   aria-label={`Add task to ${col.label}`}
                 >
                   + New
@@ -102,7 +126,7 @@ export function KanbanBoard({ tasks, onCardClick, onColumnAdd }: Props) {
               ))}
               {columnTasks.length === 0 && (
                 <div className="rounded-md border border-dashed border-border/60 px-3 py-6 text-center text-xs text-muted-foreground">
-                  No tasks
+                  No tasks here
                 </div>
               )}
             </div>

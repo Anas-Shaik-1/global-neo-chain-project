@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { PageHeader } from "@/components/common/PageHeader";
 import { useAppSelector } from "@/app/hooks";
 import {
   EXPENSE_STATUSES,
@@ -121,11 +122,12 @@ export function ExpensesPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-        <h1 className="text-xl font-semibold">Expenses</h1>
-        <Button onClick={() => setShowSubmit(true)}>+ Submit expense</Button>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Expenses"
+        description="Submit reimbursements and approve team requests."
+        actions={<Button onClick={() => setShowSubmit(true)}>+ Submit expense</Button>}
+      />
 
       {isElevated ? (
         <Tabs defaultValue="mine" className="space-y-4">

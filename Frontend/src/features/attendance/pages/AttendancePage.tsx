@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, LogIn, LogOut } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock, LogIn, LogOut, CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/common/PageHeader";
+import { MetricCard } from "@/components/common/MetricCard";
 import {
   useClockIn,
   useClockOut,
@@ -91,13 +93,14 @@ function StatusCard({
   const alreadyDone = !!todayEntry?.clockOut;
 
   return (
-    <Card>
+    <Card className="relative overflow-hidden">
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
       <CardHeader>
         <CardTitle>Today</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div>
-          <div className="text-2xl font-semibold">{status}</div>
+          <div className="font-display text-2xl font-semibold tracking-tight">{status}</div>
           {detail && <div className="mt-1 text-sm text-muted-foreground">{detail}</div>}
         </div>
         {alreadyDone ? (
@@ -170,32 +173,35 @@ export function AttendancePage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="text-xl font-semibold">Attendance</h1>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setMonth((m) => shiftMonth(m, -1))}
-            aria-label="Previous month"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <div className="min-w-[10ch] text-center text-sm font-medium">
-            {monthLabel(month)}
+    <div className="space-y-6">
+      <PageHeader
+        title="Attendance"
+        description="Clock in to start your day."
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setMonth((m) => shiftMonth(m, -1))}
+              aria-label="Previous month"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="min-w-[10ch] text-center font-mono text-sm font-medium">
+              {monthLabel(month)}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setMonth((m) => shiftMonth(m, 1))}
+              aria-label="Next month"
+              disabled={month >= currentMonthString()}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setMonth((m) => shiftMonth(m, 1))}
-            aria-label="Next month"
-            disabled={month >= currentMonthString()}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       {isCurrentMonth && (
         <StatusCard
@@ -207,39 +213,28 @@ export function AttendancePage() {
         />
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Monthly summary</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading || !data ? (
-            <Skeleton className="h-12 w-full" />
-          ) : (
-            <div className="grid grid-cols-2 gap-6 sm:grid-cols-3">
-              <div>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Total hours
-                </div>
-                <div className="mt-1 text-2xl font-semibold">
-                  {formatHoursMinutes(data.totalMinutes)}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Days worked
-                </div>
-                <div className="mt-1 text-2xl font-semibold">{data.daysWorked}</div>
-              </div>
-              <div>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Entries
-                </div>
-                <div className="mt-1 text-2xl font-semibold">{data.entries.length}</div>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {isLoading || !data ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Skeleton className="h-28 w-full" />
+          <Skeleton className="h-28 w-full" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <MetricCard
+            label="Total hours this month"
+            value={formatHoursMinutes(data.totalMinutes)}
+            hint={`${data.entries.length} ${data.entries.length === 1 ? "entry" : "entries"}`}
+            icon={<Clock className="h-5 w-5" />}
+            accent
+          />
+          <MetricCard
+            label="Days worked"
+            value={data.daysWorked}
+            hint={monthLabel(month)}
+            icon={<CalendarDays className="h-5 w-5" />}
+          />
+        </div>
+      )}
 
       <Card>
         <CardHeader>
@@ -267,9 +262,9 @@ export function AttendancePage() {
                 <tbody>
                   {data.entries.map((e) => (
                     <tr key={e.id} className="border-b border-border/50">
-                      <td className="py-2">{e.date}</td>
-                      <td>{formatTime(e.clockIn)}</td>
-                      <td>{formatTime(e.clockOut)}</td>
+                      <td className="py-2 font-mono text-xs">{e.date}</td>
+                      <td className="font-mono text-xs">{formatTime(e.clockIn)}</td>
+                      <td className="font-mono text-xs">{formatTime(e.clockOut)}</td>
                       <td>
                         {e.durationMinutes !== null
                           ? formatHoursMinutes(e.durationMinutes)

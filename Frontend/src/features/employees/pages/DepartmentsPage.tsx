@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/common/PageHeader";
 import { useDepartmentsList, useCreateDepartment } from "../api/hooks";
 
 export function DepartmentsPage() {
@@ -27,6 +28,10 @@ export function DepartmentsPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
+      <PageHeader
+        title="Departments"
+        description="Org structure and team groupings."
+      />
       <Card>
         <CardHeader><CardTitle>Create department</CardTitle></CardHeader>
         <CardContent>

@@ -10,7 +10,7 @@
     --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
-    --primary: 200 85% 52%;
+    --primary: 195 90% 55%;
     --primary-foreground: 210 40% 98%;
     --secondary: 210 40% 96%;
     --secondary-foreground: 222 47% 11%;
@@ -22,30 +22,31 @@
     --destructive-foreground: 210 40% 98%;
     --border: 214 32% 91%;
     --input: 214 32% 91%;
-    --ring: 200 85% 52%;
-    --radius: 0.5rem;
+    --ring: 195 90% 55%;
+    --radius: 0.625rem;
   }
 
   .dark {
-    --background: 222 47% 6%;
-    --foreground: 210 40% 98%;
-    --card: 222 47% 8%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222 47% 8%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 200 85% 52%;
-    --primary-foreground: 222 47% 6%;
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 217 33% 17%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 63% 41%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217 33% 17%;
-    --input: 217 33% 17%;
-    --ring: 200 85% 52%;
+    --background: 220 20% 5%;
+    --foreground: 210 20% 96%;
+    --card: 220 18% 8%;
+    --card-foreground: 210 20% 96%;
+    --popover: 220 18% 8%;
+    --popover-foreground: 210 20% 96%;
+    --primary: 195 90% 55%;
+    --primary-foreground: 220 20% 5%;
+    --secondary: 220 14% 14%;
+    --secondary-foreground: 210 20% 96%;
+    --muted: 220 14% 12%;
+    --muted-foreground: 215 16% 60%;
+    --accent: 220 14% 14%;
+    --accent-foreground: 210 20% 96%;
+    --destructive: 0 75% 55%;
+    --destructive-foreground: 210 20% 96%;
+    --border: 220 14% 16%;
+    --input: 220 14% 16%;
+    --ring: 195 90% 55%;
+    --radius: 0.625rem;
   }
 
   * {
@@ -53,5 +54,20 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+  body {
+    font-family: theme(fontFamily.sans);
+    font-feature-settings: "ss01", "cv01", "cv11";
+  }
+  h1, h2, h3, h4 { font-family: theme(fontFamily.display); letter-spacing: -0.02em; }
+  code, pre { font-family: theme(fontFamily.mono); }
+}
+
+@layer base {
+  body {
+    background-image:
+      radial-gradient(at 20% 0%, hsla(195 90% 55% / 0.04) 0px, transparent 50%),
+      radial-gradient(at 80% 100%, hsla(210 90% 50% / 0.04) 0px, transparent 50%);
+    background-attachment: fixed;
   }
 }

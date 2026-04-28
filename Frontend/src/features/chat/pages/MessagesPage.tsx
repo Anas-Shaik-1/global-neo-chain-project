@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/common/PageHeader";
 import { useAppSelector } from "@/app/hooks";
 import {
   chatKeys,
@@ -83,12 +84,13 @@ export function MessagesPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Messages</h1>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Messages"
+        description="Direct conversations with your colleagues."
+      />
 
-      <div className="grid h-[calc(100vh-12rem)] grid-cols-1 overflow-hidden rounded-lg border border-border bg-card md:grid-cols-[20rem_1fr]">
+      <div className="grid h-[calc(100vh-16rem)] grid-cols-1 overflow-hidden rounded-lg border border-border bg-card md:grid-cols-[20rem_1fr]">
         <aside className="flex flex-col border-b border-border md:border-b-0 md:border-r">
           <div className="border-b border-border p-3">
             <Button className="w-full" onClick={() => setShowNew(true)}>

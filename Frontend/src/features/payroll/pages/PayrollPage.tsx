@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { PageHeader } from "@/components/common/PageHeader";
 import { useAppSelector } from "@/app/hooks";
 import { useAllPayslips, useMyPayslips } from "../api/hooks";
 import { PayslipsTable } from "../components/PayslipsTable";
@@ -109,10 +110,8 @@ export function PayrollPage() {
   const isElevated = role === "HR" || role === "ADMIN";
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-        <h1 className="text-xl font-semibold">Payroll</h1>
-      </div>
+    <div className="space-y-6">
+      <PageHeader title="Payroll" description="Generate and download payslips." />
 
       {isElevated ? (
         <Tabs defaultValue="mine" className="space-y-4">

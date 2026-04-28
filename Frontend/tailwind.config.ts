@@ -46,6 +46,11 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      fontFamily: {
+        display: ['"Bricolage Grotesque"', "ui-sans-serif", "system-ui"],
+        sans: ['"DM Sans"', "ui-sans-serif", "system-ui"],
+        mono: ['"JetBrains Mono"', "ui-monospace", "monospace"],
+      },
     },
   },
   plugins: [animate],
