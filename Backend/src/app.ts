@@ -1,4 +1,5 @@
 import express from "express";
+import path from "node:path";
 import helmet from "helmet";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -10,7 +11,11 @@ import { errorHandler } from "./middleware/error.js";
 import { globalLimiter } from "./middleware/rateLimit.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
 import { healthRouter } from "./modules/health/health.routes.js";
+import { employeesRouter, positionsRouter } from "./modules/employees/employees.routes.js";
+import { departmentsRouter } from "./modules/departments/departments.routes.js";
 import "./modules/auth/auth.schema.js";
+import "./modules/employees/employees.schema.js";
+import "./modules/departments/departments.schema.js";
 import { buildOpenApiDocument } from "./openapi/spec.js";
 
 export function createApp() {
@@ -23,12 +28,19 @@ export function createApp() {
   app.use(pinoHttp({ logger }));
   app.use(globalLimiter);
 
+  // Static file serving for uploaded avatars/resumes
+  const uploadsDir = path.resolve(process.env.UPLOADS_DIR ?? "uploads");
+  app.use("/files", express.static(uploadsDir, { fallthrough: false }));
+
   const openapi = buildOpenApiDocument();
   app.get("/openapi.json", (_req, res) => res.json(openapi));
   app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapi));
 
   app.use("/health", healthRouter);
   app.use("/auth", authRouter);
+  app.use("/employees", employeesRouter);
+  app.use("/positions", positionsRouter);
+  app.use("/departments", departmentsRouter);
 
   app.use(errorHandler);
   return app;
