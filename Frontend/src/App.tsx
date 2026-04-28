@@ -21,6 +21,10 @@ import { ExpensesPage } from "@/features/expenses/pages/ExpensesPage";
 import { PayrollPage } from "@/features/payroll/pages/PayrollPage";
 import { MessagesPage } from "@/features/chat/pages/MessagesPage";
 import { DashboardPage } from "@/features/dashboard/pages/DashboardPage";
+import { CallsHistoryPage } from "@/features/calls/pages/CallsHistoryPage";
+import { CallProvider } from "@/features/calls/CallProvider";
+import { IncomingCallDialog } from "@/features/calls/components/IncomingCallDialog";
+import { CallView } from "@/features/calls/components/CallView";
 import { RoleGate } from "@/features/auth/RoleGate";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
@@ -55,6 +59,7 @@ function Routed() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/tasks" element={<TasksPage />} />
           <Route path="/messages" element={<MessagesPage />} />
+          <Route path="/calls" element={<CallsHistoryPage />} />
           <Route path="/attendance" element={<AttendancePage />} />
           <Route path="/expenses" element={<ExpensesPage />} />
           <Route path="/payroll" element={<PayrollPage />} />
@@ -74,7 +79,11 @@ export default function App() {
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
           <BrowserRouter>
-            <Routed />
+            <CallProvider>
+              <Routed />
+              <IncomingCallDialog />
+              <CallView />
+            </CallProvider>
           </BrowserRouter>
         </QueryClientProvider>
       </ThemeProvider>

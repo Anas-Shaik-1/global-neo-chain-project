@@ -1,10 +1,12 @@
 import { useParams } from "react-router-dom";
+import { Phone } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { useAppSelector } from "@/app/hooks";
+import { useCall } from "@/features/calls/CallProvider";
 import { useEmployee, useDeactivateEmployee, type FullProfile } from "../api/hooks";
 
 function isFullProfile(p: FullProfile | { id: string }): p is FullProfile {
@@ -16,6 +18,7 @@ export function EmployeeDetailPage() {
   const me = useAppSelector((s) => s.auth.user);
   const { data, isLoading } = useEmployee(id);
   const deactivate = useDeactivateEmployee();
+  const call = useCall();
   const elevated = me?.role === "HR" || me?.role === "ADMIN";
 
   if (isLoading || !data) return <Skeleton className="h-96 w-full" />;
@@ -72,11 +75,25 @@ export function EmployeeDetailPage() {
         </Card>
       )}
 
-      {elevated && data.isActive && data.id !== me?.id && (
-        <Button variant="destructive" onClick={() => deactivate.mutate(data.id)} disabled={deactivate.isPending}>
-          {deactivate.isPending ? "Deactivating…" : "Deactivate employee"}
-        </Button>
-      )}
+      <div className="flex flex-wrap gap-2">
+        {data.id !== me?.id && data.isActive && (
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => {
+              void call.start(data.id, data.name);
+            }}
+          >
+            <Phone className="h-4 w-4" />
+            Call
+          </Button>
+        )}
+        {elevated && data.isActive && data.id !== me?.id && (
+          <Button variant="destructive" onClick={() => deactivate.mutate(data.id)} disabled={deactivate.isPending}>
+            {deactivate.isPending ? "Deactivating…" : "Deactivate employee"}
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

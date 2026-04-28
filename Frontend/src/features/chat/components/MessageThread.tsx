@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { useCall } from "@/features/calls/CallProvider";
 import type { ChatMessage, Conversation } from "../api/hooks";
 
 interface Props {
@@ -27,6 +29,16 @@ function otherName(c: Conversation, meId: string | undefined): string {
   return other?.name ?? "Conversation";
 }
 
+function otherParticipant(
+  c: Conversation,
+  meId: string | undefined,
+): { id: string; name: string } | null {
+  const other = meId
+    ? c.participants.find((p) => p.id !== meId)
+    : c.participants[0];
+  return other ? { id: other.id, name: other.name } : null;
+}
+
 export function MessageThread({
   conversation,
   meId,
@@ -37,6 +49,8 @@ export function MessageThread({
 }: Props) {
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const call = useCall();
+  const peer = otherParticipant(conversation, meId);
 
   // The list is rendered oldest-at-top, so scroll to bottom when new messages arrive.
   useEffect(() => {
@@ -57,9 +71,24 @@ export function MessageThread({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-border px-4 py-3">
-        <div className="text-sm font-medium">{otherName(conversation, meId)}</div>
-        <div className="text-xs text-muted-foreground">Direct message</div>
+      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+        <div>
+          <div className="text-sm font-medium">{otherName(conversation, meId)}</div>
+          <div className="text-xs text-muted-foreground">Direct message</div>
+        </div>
+        {peer && (
+          <button
+            type="button"
+            onClick={() => {
+              void call.start(peer.id, peer.name);
+            }}
+            aria-label={`Call ${peer.name}`}
+            title={`Call ${peer.name}`}
+            className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <Phone className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto px-4 py-3">

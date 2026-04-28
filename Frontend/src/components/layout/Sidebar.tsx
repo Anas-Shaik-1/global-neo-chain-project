@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   ListChecks,
   MessageSquare,
+  Phone,
   CalendarClock,
   Receipt,
   BadgeDollarSign,
@@ -22,6 +23,7 @@ const ACTIVE_NAV = [
   { to: "/attendance", label: "Attendance", Icon: CalendarClock, roles: undefined },
   { to: "/tasks", label: "Tasks", Icon: ListChecks, roles: undefined },
   { to: "/messages", label: "Messages", Icon: MessageSquare, roles: undefined },
+  { to: "/calls", label: "Calls", Icon: Phone, roles: undefined },
   { to: "/expenses", label: "Expenses", Icon: Receipt, roles: undefined },
   { to: "/payroll", label: "Payroll", Icon: BadgeDollarSign, roles: undefined },
 ];
