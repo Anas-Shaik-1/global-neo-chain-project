@@ -16,12 +16,14 @@ import { departmentsRouter } from "./modules/departments/departments.routes.js";
 import { attendanceRouter } from "./modules/attendance/attendance.routes.js";
 import { projectsRouter, tasksRouter } from "./modules/tasks/tasks.routes.js";
 import { expensesRouter } from "./modules/expenses/expenses.routes.js";
+import { payrollRouter } from "./modules/payroll/payroll.routes.js";
 import "./modules/auth/auth.schema.js";
 import "./modules/employees/employees.schema.js";
 import "./modules/departments/departments.schema.js";
 import "./modules/attendance/attendance.schema.js";
 import "./modules/tasks/tasks.schema.js";
 import "./modules/expenses/expenses.schema.js";
+import "./modules/payroll/payroll.schema.js";
 import { buildOpenApiDocument } from "./openapi/spec.js";
 
 export function createApp() {
@@ -51,6 +53,7 @@ export function createApp() {
   app.use("/projects", projectsRouter);
   app.use("/tasks", tasksRouter);
   app.use("/expenses", expensesRouter);
+  app.use("/payroll", payrollRouter);
 
   app.use(errorHandler);
   return app;

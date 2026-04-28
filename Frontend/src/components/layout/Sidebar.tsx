@@ -22,12 +22,12 @@ const ACTIVE_NAV = [
   { to: "/attendance", label: "Attendance", Icon: CalendarClock, roles: undefined },
   { to: "/tasks", label: "Tasks", Icon: ListChecks, roles: undefined },
   { to: "/expenses", label: "Expenses", Icon: Receipt, roles: undefined },
+  { to: "/payroll", label: "Payroll", Icon: BadgeDollarSign, roles: undefined },
 ];
 
 const STUB_NAV = [
   { to: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
   { to: "/messages", label: "Messages", Icon: MessageSquare },
-  { to: "/payroll", label: "Payroll", Icon: BadgeDollarSign },
 ];
 
 export function Sidebar() {
