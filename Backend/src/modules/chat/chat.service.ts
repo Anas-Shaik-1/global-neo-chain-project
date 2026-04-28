@@ -1,0 +1,244 @@
+import { Types } from "mongoose";
+import {
+  Conversation,
+  buildPairKey,
+  type ConversationDoc,
+} from "../../models/conversation.model.js";
+import { Message, type MessageDoc } from "../../models/message.model.js";
+import { User } from "../../models/user.model.js";
+import {
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from "../../lib/errors.js";
+
+export interface ParticipantSummary {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+}
+
+export interface ConversationResponseShape {
+  id: string;
+  participants: ParticipantSummary[];
+  lastMessageAt: Date | null;
+  lastMessagePreview: string | null;
+  unreadCount: number;
+}
+
+export interface MessageResponseShape {
+  id: string;
+  conversationId: string;
+  authorId: string;
+  authorName: string | null;
+  body: string;
+  createdAt: Date;
+}
+
+async function buildParticipantsMap(
+  ids: Types.ObjectId[],
+): Promise<Map<string, ParticipantSummary>> {
+  const unique = Array.from(new Set(ids.map((i) => i.toString())));
+  const map = new Map<string, ParticipantSummary>();
+  if (unique.length === 0) return map;
+  const users = await User.find({ _id: { $in: unique } })
+    .select("name avatarUrl")
+    .lean();
+  for (const u of users) {
+    map.set(u._id.toString(), {
+      id: u._id.toString(),
+      name: u.name,
+      avatarUrl: u.avatarUrl ?? null,
+    });
+  }
+  // For any ID we couldn't find (e.g. deleted user), leave a placeholder so
+  // the response still validates.
+  for (const id of unique) {
+    if (!map.has(id)) {
+      map.set(id, { id, name: "Unknown", avatarUrl: null });
+    }
+  }
+  return map;
+}
+
+export function denormalizeConversation(
+  c: ConversationDoc,
+  participants: Map<string, ParticipantSummary>,
+): ConversationResponseShape {
+  return {
+    id: c._id.toString(),
+    participants: c.participantIds.map(
+      (id) =>
+        participants.get(id.toString()) ?? {
+          id: id.toString(),
+          name: "Unknown",
+          avatarUrl: null,
+        },
+    ),
+    lastMessageAt: c.lastMessageAt ?? null,
+    lastMessagePreview: c.lastMessagePreview ?? null,
+    unreadCount: 0,
+  };
+}
+
+async function buildAuthorNames(
+  ids: Types.ObjectId[],
+): Promise<Map<string, string>> {
+  const unique = Array.from(new Set(ids.map((i) => i.toString())));
+  const map = new Map<string, string>();
+  if (unique.length === 0) return map;
+  const users = await User.find({ _id: { $in: unique } }).select("name").lean();
+  for (const u of users) map.set(u._id.toString(), u.name);
+  return map;
+}
+
+export function denormalizeMessage(
+  m: MessageDoc,
+  authors: Map<string, string>,
+): MessageResponseShape {
+  const ts = m as unknown as { createdAt: Date };
+  return {
+    id: m._id.toString(),
+    conversationId: m.conversationId.toString(),
+    authorId: m.authorId.toString(),
+    authorName: authors.get(m.authorId.toString()) ?? null,
+    body: m.body,
+    createdAt: ts.createdAt,
+  };
+}
+
+export async function openConversation(
+  meId: string,
+  otherUserId: string,
+): Promise<ConversationResponseShape> {
+  if (meId === otherUserId) {
+    throw new ValidationError("Cannot open a DM with yourself");
+  }
+  if (!Types.ObjectId.isValid(otherUserId)) {
+    throw new ValidationError("otherUserId must be a valid id");
+  }
+  const other = await User.findById(otherUserId).select("_id").lean();
+  if (!other) throw new NotFoundError("User");
+
+  const pairKey = buildPairKey(meId, otherUserId);
+  const sortedIds =
+    meId < otherUserId
+      ? [new Types.ObjectId(meId), new Types.ObjectId(otherUserId)]
+      : [new Types.ObjectId(otherUserId), new Types.ObjectId(meId)];
+
+  let convo = await Conversation.findOne({ pairKey });
+  if (!convo) {
+    try {
+      convo = await Conversation.create({
+        participantIds: sortedIds,
+        pairKey,
+        lastMessageAt: null,
+        lastMessagePreview: null,
+      });
+    } catch (err: unknown) {
+      // Race: someone else inserted the same pair concurrently.
+      if (
+        err &&
+        typeof err === "object" &&
+        "code" in err &&
+        (err as { code?: number }).code === 11000
+      ) {
+        const existing = await Conversation.findOne({ pairKey });
+        if (existing) {
+          convo = existing;
+        } else {
+          throw err;
+        }
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  const participants = await buildParticipantsMap(convo!.participantIds);
+  return denormalizeConversation(convo!, participants);
+}
+
+export async function listConversations(
+  meId: string,
+): Promise<ConversationResponseShape[]> {
+  const docs = await Conversation.find({
+    participantIds: new Types.ObjectId(meId),
+  }).sort({ lastMessageAt: -1, updatedAt: -1 });
+
+  const allIds: Types.ObjectId[] = [];
+  for (const d of docs) {
+    for (const id of d.participantIds) allIds.push(id);
+  }
+  const participants = await buildParticipantsMap(allIds);
+  return docs.map((d) => denormalizeConversation(d, participants));
+}
+
+export interface ListMessagesInput {
+  before?: Date;
+  limit?: number;
+}
+
+export async function listMessages(
+  conversationId: string,
+  requesterId: string,
+  input: ListMessagesInput,
+): Promise<MessageResponseShape[]> {
+  if (!Types.ObjectId.isValid(conversationId)) {
+    throw new ValidationError("conversationId must be a valid id");
+  }
+  const convo = await Conversation.findById(conversationId);
+  if (!convo) throw new NotFoundError("Conversation");
+  const isParticipant = convo.participantIds.some(
+    (id) => id.toString() === requesterId,
+  );
+  if (!isParticipant) throw new ForbiddenError();
+
+  const limit = Math.min(100, Math.max(1, input.limit ?? 50));
+  const filter: Record<string, unknown> = {
+    conversationId: new Types.ObjectId(conversationId),
+  };
+  if (input.before) {
+    filter.createdAt = { $lt: input.before };
+  }
+  const docs = await Message.find(filter).sort({ createdAt: -1 }).limit(limit);
+  const authorIds = docs.map((d) => d.authorId);
+  const authors = await buildAuthorNames(authorIds);
+  return docs.map((d) => denormalizeMessage(d, authors));
+}
+
+export async function sendMessage(
+  conversationId: string,
+  authorId: string,
+  body: string,
+): Promise<MessageResponseShape> {
+  if (!Types.ObjectId.isValid(conversationId)) {
+    throw new ValidationError("conversationId must be a valid id");
+  }
+  const trimmed = body.trim();
+  if (trimmed.length === 0) {
+    throw new ValidationError("body must not be empty");
+  }
+  if (trimmed.length > 4000) {
+    throw new ValidationError("body must be <= 4000 chars");
+  }
+  const convo = await Conversation.findById(conversationId);
+  if (!convo) throw new NotFoundError("Conversation");
+  const isParticipant = convo.participantIds.some(
+    (id) => id.toString() === authorId,
+  );
+  if (!isParticipant) throw new ForbiddenError();
+
+  const created = await Message.create({
+    conversationId: new Types.ObjectId(conversationId),
+    authorId: new Types.ObjectId(authorId),
+    body: trimmed,
+  });
+
+  convo.lastMessageAt = new Date();
+  convo.lastMessagePreview = trimmed.slice(0, 100);
+  await convo.save();
+
+  const authors = await buildAuthorNames([created.authorId]);
+  return denormalizeMessage(created, authors);
+}

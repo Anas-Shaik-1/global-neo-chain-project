@@ -1,0 +1,163 @@
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import bcrypt from "bcrypt";
+import request from "supertest";
+import { startTestDb, stopTestDb, clearTestDb } from "../../test/setup.js";
+
+beforeAll(async () => {
+  Object.assign(process.env, {
+    PORT: "3000",
+    MONGO_URI: "mongodb://localhost/test",
+    FRONTEND_ORIGIN: "http://localhost:5173",
+    JWT_ACCESS_SECRET: "x".repeat(32),
+    JWT_REFRESH_SECRET: "y".repeat(32),
+    JWT_ACCESS_TTL: "15m",
+    JWT_REFRESH_TTL: "7d",
+    SEED_ADMIN_EMAIL: "a@b.com",
+    SEED_ADMIN_PASSWORD: "Password-1!",
+    NODE_ENV: "test",
+    LOG_LEVEL: "silent",
+  });
+  await startTestDb();
+  const { User } = await import("../../models/user.model.js");
+  await User.init();
+  const { Conversation } = await import("../../models/conversation.model.js");
+  await Conversation.init();
+  const { Message } = await import("../../models/message.model.js");
+  await Message.init();
+});
+afterAll(async () => {
+  await stopTestDb();
+});
+beforeEach(async () => {
+  await clearTestDb();
+});
+
+async function buildApp() {
+  const { createApp } = await import("../../app.js");
+  return createApp();
+}
+
+async function seedAndToken(email: string) {
+  const { User } = await import("../../models/user.model.js");
+  const u = await User.create({
+    email,
+    passwordHash: await bcrypt.hash("pw", 4),
+    name: email,
+    role: "EMPLOYEE",
+  });
+  const { signAccessToken } = await import("../../lib/tokens.js");
+  return {
+    id: u._id.toString(),
+    token: signAccessToken({ sub: u._id.toString(), role: "EMPLOYEE" }),
+  };
+}
+
+describe("/chat", () => {
+  it("POST /chat/conversations creates a conversation between two users", async () => {
+    const a = await seedAndToken("a@b.com");
+    const b = await seedAndToken("b@b.com");
+    const app = await buildApp();
+    const res = await request(app)
+      .post("/chat/conversations")
+      .set("Authorization", `Bearer ${a.token}`)
+      .send({ otherUserId: b.id });
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBeTruthy();
+    expect(Array.isArray(res.body.participants)).toBe(true);
+    expect(res.body.participants).toHaveLength(2);
+    expect(res.body.unreadCount).toBe(0);
+  });
+
+  it("POST /chat/conversations again with same other user returns same conversation", async () => {
+    const a = await seedAndToken("a@b.com");
+    const b = await seedAndToken("b@b.com");
+    const app = await buildApp();
+    const r1 = await request(app)
+      .post("/chat/conversations")
+      .set("Authorization", `Bearer ${a.token}`)
+      .send({ otherUserId: b.id });
+    const r2 = await request(app)
+      .post("/chat/conversations")
+      .set("Authorization", `Bearer ${b.token}`)
+      .send({ otherUserId: a.id });
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
+    expect(r1.body.id).toBe(r2.body.id);
+  });
+
+  it("POST /chat/conversations/:id/messages returns 201 and creates a message", async () => {
+    const a = await seedAndToken("a@b.com");
+    const b = await seedAndToken("b@b.com");
+    const app = await buildApp();
+    const convo = await request(app)
+      .post("/chat/conversations")
+      .set("Authorization", `Bearer ${a.token}`)
+      .send({ otherUserId: b.id });
+    const res = await request(app)
+      .post(`/chat/conversations/${convo.body.id}/messages`)
+      .set("Authorization", `Bearer ${a.token}`)
+      .send({ body: "hello b" });
+    expect(res.status).toBe(201);
+    expect(res.body.body).toBe("hello b");
+    expect(res.body.conversationId).toBe(convo.body.id);
+    expect(res.body.authorId).toBe(a.id);
+  });
+
+  it("GET /chat/conversations/:id/messages returns messages newest-first", async () => {
+    const a = await seedAndToken("a@b.com");
+    const b = await seedAndToken("b@b.com");
+    const app = await buildApp();
+    const convo = await request(app)
+      .post("/chat/conversations")
+      .set("Authorization", `Bearer ${a.token}`)
+      .send({ otherUserId: b.id });
+    await request(app)
+      .post(`/chat/conversations/${convo.body.id}/messages`)
+      .set("Authorization", `Bearer ${a.token}`)
+      .send({ body: "first" });
+    await request(app)
+      .post(`/chat/conversations/${convo.body.id}/messages`)
+      .set("Authorization", `Bearer ${b.token}`)
+      .send({ body: "second" });
+    const res = await request(app)
+      .get(`/chat/conversations/${convo.body.id}/messages`)
+      .set("Authorization", `Bearer ${a.token}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body).toHaveLength(2);
+    expect(res.body[0].body).toBe("second");
+    expect(res.body[1].body).toBe("first");
+  });
+
+  it("GET /chat/conversations lists my conversations sorted by lastMessageAt desc", async () => {
+    const a = await seedAndToken("a@b.com");
+    const b = await seedAndToken("b@b.com");
+    const c = await seedAndToken("c@b.com");
+    const app = await buildApp();
+    const cAB = await request(app)
+      .post("/chat/conversations")
+      .set("Authorization", `Bearer ${a.token}`)
+      .send({ otherUserId: b.id });
+    const cAC = await request(app)
+      .post("/chat/conversations")
+      .set("Authorization", `Bearer ${a.token}`)
+      .send({ otherUserId: c.id });
+    // Send a message in cAB so its lastMessageAt is more recent.
+    await request(app)
+      .post(`/chat/conversations/${cAC.body.id}/messages`)
+      .set("Authorization", `Bearer ${a.token}`)
+      .send({ body: "to c" });
+    await new Promise((r) => setTimeout(r, 5));
+    await request(app)
+      .post(`/chat/conversations/${cAB.body.id}/messages`)
+      .set("Authorization", `Bearer ${a.token}`)
+      .send({ body: "to b" });
+    const res = await request(app)
+      .get("/chat/conversations")
+      .set("Authorization", `Bearer ${a.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(2);
+    expect(res.body[0].id).toBe(cAB.body.id);
+    expect(res.body[1].id).toBe(cAC.body.id);
+  });
+});
