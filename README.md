@@ -78,6 +78,24 @@ pnpm --dir Frontend test
 - Refresh rotates on every `/auth/refresh`; re-using a stale refresh revokes the entire family.
 - Roles: `ADMIN`, `HR`, `EMPLOYEE`, `PM`.
 
+### Auth flow extensions (password reset, force-change, TOTP 2FA)
+
+- **Password reset (`POST /auth/password-reset/request` → `POST /auth/password-reset/confirm`).**
+  The request endpoint always returns `204` regardless of whether the email is
+  registered, to avoid account-enumeration leaks. **Email delivery is logged to
+  the server console only — production deployments must wire a real email
+  provider (SES, Postmark, Resend, etc.) before this is usable.** The reset
+  link in the log looks like `${FRONTEND_ORIGIN}/reset-password?token=...` and
+  expires in 1 hour. Tokens are one-shot and stored as sha256 hashes only.
+- **Force-change-password.** Users with `mustChangePassword: true` (HR-created
+  accounts, initial seed admin if you flip the flag) are redirected to
+  `/change-password` from any authenticated route until they update.
+- **TOTP 2FA (opt-in).** Set up at `/security`. After scanning the QR code in
+  an authenticator app and verifying once, login switches to a two-step flow:
+  `POST /auth/login` returns `{ requires2FA: true }`, then the FE collects the
+  6-digit code and calls `POST /auth/login-2fa` to complete. Disabling 2FA
+  requires the account password.
+
 ## Adding a new feature module (Backend)
 
 1. Create `Backend/src/modules/<name>/`.

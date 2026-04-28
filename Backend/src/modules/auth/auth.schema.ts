@@ -16,6 +16,8 @@ export const PublicUser = z
     name: z.string(),
     role: z.enum(ROLES),
     isVerified: z.boolean(),
+    mustChangePassword: z.boolean(),
+    totpEnabled: z.boolean(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
@@ -30,6 +32,12 @@ export const AccessTokenResponse = z
 export const LoginResponse = AccessTokenResponse.extend({
   user: PublicUser,
 }).openapi("LoginResponse");
+
+// /auth/login can return this instead when the user has TOTP enabled — the FE
+// should then show a 6-digit prompt and POST /auth/login-2fa with the code.
+export const Requires2FAResponse = z
+  .object({ requires2FA: z.literal(true) })
+  .openapi("Requires2FAResponse");
 
 export const ErrorResponse = z
   .object({

@@ -1,6 +1,12 @@
 import type { Request, Response, NextFunction } from "express";
 import { config } from "../../config/index.js";
-import { login as loginSvc, rotate, logout as logoutSvc, getMe } from "./auth.service.js";
+import {
+  loginCheckCredentials,
+  issueTokensFor,
+  rotate,
+  logout as logoutSvc,
+  getMe,
+} from "./auth.service.js";
 import type { z } from "zod";
 import type { LoginBody } from "./auth.schema.js";
 import { UnauthorizedError } from "../../lib/errors.js";
@@ -10,7 +16,7 @@ type LoginInput = z.infer<typeof LoginBody>;
 const REFRESH_COOKIE = "refresh";
 const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-function setRefreshCookie(res: Response, token: string) {
+export function setRefreshCookie(res: Response, token: string) {
   res.cookie(REFRESH_COOKIE, token, {
     httpOnly: true,
     secure: config.NODE_ENV === "production",
@@ -28,9 +34,18 @@ export async function postLogin(req: Request, res: Response, next: NextFunction)
   try {
     // validate(LoginBody) middleware already parsed the body and put it on req.validated
     const body = req.validated as LoginInput;
-    const { accessToken, refreshToken, user } = await loginSvc(body.email, body.password);
+    const user = await loginCheckCredentials(body.email, body.password);
+
+    // 2FA branch: when TOTP is enabled, don't issue tokens — the FE must
+    // call POST /auth/login-2fa with the TOTP code to complete the login.
+    if (user.totpEnabled) {
+      res.json({ requires2FA: true });
+      return;
+    }
+
+    const { accessToken, refreshToken, user: pub } = await issueTokensFor(user);
     setRefreshCookie(res, refreshToken);
-    res.json({ accessToken, user });
+    res.json({ accessToken, user: pub });
   } catch (err) {
     next(err);
   }

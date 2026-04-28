@@ -8,6 +8,10 @@ export interface AuthUser {
   name: string;
   role: Role;
   isVerified: boolean;
+  // Auth-extensions: present on responses from a current backend; older payloads
+  // (and existing tests) may omit these fields, so they're optional.
+  mustChangePassword?: boolean;
+  totpEnabled?: boolean;
 }
 
 export interface AuthState {

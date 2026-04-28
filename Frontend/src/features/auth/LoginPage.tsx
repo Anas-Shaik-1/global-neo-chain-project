@@ -1,29 +1,49 @@
 import { useState, type FormEvent } from "react";
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Logo } from "@/components/brand/Logo";
 import { useAppDispatch, useAppSelector } from "@/app/hooks";
-import { loginThunk } from "./authThunks";
+import { loginThunk, login2FAThunk } from "./authThunks";
 
 const FEATURE_PILLS = ["Time tracking", "Approvals", "Payroll"];
+
+type Stage = "credentials" | "totp";
 
 export function LoginPage() {
   const dispatch = useAppDispatch();
   const user = useAppSelector((s) => s.auth.user);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [totp, setTotp] = useState("");
+  const [stage, setStage] = useState<Stage>("credentials");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   if (user) return <Navigate to="/dashboard" replace />;
 
-  async function onSubmit(e: FormEvent) {
+  async function onSubmitCredentials(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
     const action = await dispatch(loginThunk({ email, password }));
+    setSubmitting(false);
+    if (action.type.endsWith("/rejected")) {
+      setError((action.payload as string) ?? "Login failed");
+      return;
+    }
+    const result = action.payload as { kind: "ok" | "2fa-required" } | undefined;
+    if (result?.kind === "2fa-required") {
+      setStage("totp");
+    }
+  }
+
+  async function onSubmitTotp(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    const action = await dispatch(login2FAThunk({ email, password, token: totp }));
     setSubmitting(false);
     if (action.type.endsWith("/rejected")) {
       setError((action.payload as string) ?? "Login failed");
@@ -100,55 +120,108 @@ export function LoginPage() {
 
           <div className="space-y-2">
             <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground">
-              Welcome back
+              {stage === "credentials" ? "Welcome back" : "Two-factor"}
             </h2>
             <p className="text-sm text-muted-foreground">
-              Sign in to your Global NeoChain workspace
+              {stage === "credentials"
+                ? "Sign in to your Global NeoChain workspace"
+                : "Enter the 6-digit code from your authenticator app."}
             </p>
           </div>
 
-          <form onSubmit={onSubmit} className="space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Work email
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@globalneochain.com"
-                className="h-11"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Password
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="h-11"
-              />
-            </div>
-            {error && (
-              <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-                {error}
+          {stage === "credentials" ? (
+            <form onSubmit={onSubmitCredentials} className="space-y-5">
+              <div className="space-y-2">
+                <Label htmlFor="email" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Work email
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@globalneochain.com"
+                  className="h-11"
+                />
               </div>
-            )}
-            <div className="group relative">
-              <div className="absolute -inset-px rounded-md bg-gradient-to-r from-[hsl(195_90%_55%)] to-[hsl(210_90%_50%)] opacity-0 blur-sm transition-opacity duration-300 group-hover:opacity-60" />
-              <Button type="submit" className="relative h-11 w-full text-sm font-semibold" disabled={submitting}>
-                {submitting ? "Signing in…" : "Sign in"}
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Password
+                </Label>
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="h-11"
+                />
+                <div className="text-right">
+                  <Link
+                    to="/forgot-password"
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
+              </div>
+              {error && (
+                <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                  {error}
+                </div>
+              )}
+              <div className="group relative">
+                <div className="absolute -inset-px rounded-md bg-gradient-to-r from-[hsl(195_90%_55%)] to-[hsl(210_90%_50%)] opacity-0 blur-sm transition-opacity duration-300 group-hover:opacity-60" />
+                <Button type="submit" className="relative h-11 w-full text-sm font-semibold" disabled={submitting}>
+                  {submitting ? "Signing in…" : "Sign in"}
+                </Button>
+              </div>
+            </form>
+          ) : (
+            <form onSubmit={onSubmitTotp} className="space-y-5">
+              <div className="space-y-2">
+                <Label htmlFor="totp" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Authenticator code
+                </Label>
+                <Input
+                  id="totp"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
+                  required
+                  value={totp}
+                  onChange={(e) => setTotp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  className="h-11 font-mono tracking-[0.4em]"
+                  placeholder="123456"
+                  autoFocus
+                />
+              </div>
+              {error && (
+                <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                  {error}
+                </div>
+              )}
+              <Button type="submit" className="h-11 w-full text-sm font-semibold" disabled={submitting || totp.length !== 6}>
+                {submitting ? "Verifying…" : "Verify"}
               </Button>
-            </div>
-          </form>
+              <button
+                type="button"
+                onClick={() => {
+                  setStage("credentials");
+                  setTotp("");
+                  setError(null);
+                }}
+                className="block w-full text-center text-xs text-muted-foreground hover:text-foreground"
+              >
+                Back to sign in
+              </button>
+            </form>
+          )}
 
           <p className="text-center text-xs text-muted-foreground">
             Need access? Talk to your HR admin.

@@ -71,6 +71,8 @@ async function main() {
       jobTitle: u.jobTitle,
       isVerified: true,
       isActive: true,
+      // Demo users have known credentials — don't force them to reset on first login.
+      mustChangePassword: false,
     });
     logger.info({ email: u.email, role: u.role }, "user created");
   }

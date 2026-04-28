@@ -1,4 +1,5 @@
-import { Bell, LogOut, Moon, Search, Sun, User } from "lucide-react";
+import { Bell, LogOut, Moon, Search, ShieldCheck, Sun, User } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "@/app/hooks";
 import { themeChanged } from "@/features/ui/uiSlice";
 import { logoutThunk } from "@/features/auth/authThunks";
@@ -72,6 +73,12 @@ export function Topbar() {
             <DropdownMenuItem disabled>
               <User className="mr-2 h-4 w-4" />
               Profile
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/security">
+                <ShieldCheck className="mr-2 h-4 w-4" />
+                Security
+              </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => dispatch(logoutThunk())}>

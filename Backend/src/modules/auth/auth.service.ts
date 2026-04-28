@@ -1,6 +1,6 @@
 import bcrypt from "bcrypt";
-import { Types } from "mongoose";
-import { User, type Role } from "../../models/user.model.js";
+import { Types, type HydratedDocument } from "mongoose";
+import { User, type Role, type UserDoc } from "../../models/user.model.js";
 import { RefreshToken } from "../../models/refreshToken.model.js";
 import {
   signAccessToken,
@@ -14,37 +14,74 @@ import { UnauthorizedError } from "../../lib/errors.js";
 // If you change JWT_REFRESH_TTL in env, update this too.
 const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+export interface PublicUser {
+  id: string;
+  email: string;
+  name: string;
+  role: Role;
+  isVerified: boolean;
+  mustChangePassword: boolean;
+  totpEnabled: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface AuthPayload {
   accessToken: string;
   refreshToken: string;
-  user: {
-    id: string;
-    email: string;
-    name: string;
-    role: Role;
-    isVerified: boolean;
-    createdAt: Date;
-    updatedAt: Date;
-  };
+  user: PublicUser;
 }
 
-export async function login(email: string, password: string): Promise<AuthPayload> {
-  const user = await User.findOne({ email: email.toLowerCase() }).select("+passwordHash");
-  if (!user) throw new UnauthorizedError("Invalid credentials");
+type FullUser = HydratedDocument<UserDoc> & {
+  passwordHash: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
-  const ok = await bcrypt.compare(password, user.passwordHash);
-  if (!ok) throw new UnauthorizedError("Invalid credentials");
-
-  const family = newJti();
-  return issueTokens(user._id, user.role, family, {
+function toPublicUser(user: FullUser): PublicUser {
+  return {
     id: user._id.toString(),
     email: user.email,
     name: user.name,
     role: user.role,
     isVerified: user.isVerified,
-    createdAt: (user as unknown as { createdAt: Date }).createdAt,
-    updatedAt: (user as unknown as { updatedAt: Date }).updatedAt,
-  });
+    mustChangePassword: Boolean(user.mustChangePassword),
+    totpEnabled: Boolean(user.totpEnabled),
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+  };
+}
+
+/**
+ * Verifies email + password and returns the user document. Does NOT issue tokens
+ * and does NOT enforce 2FA — the controller decides whether to issue tokens
+ * directly (no 2FA) or branch to the requires-2FA flow.
+ */
+export async function loginCheckCredentials(email: string, password: string): Promise<FullUser> {
+  const user = (await User.findOne({ email: email.toLowerCase() }).select("+passwordHash")) as FullUser | null;
+  if (!user) throw new UnauthorizedError("Invalid credentials");
+
+  const ok = await bcrypt.compare(password, user.passwordHash);
+  if (!ok) throw new UnauthorizedError("Invalid credentials");
+
+  return user;
+}
+
+/** Issues an access + refresh token pair for an already-validated user. */
+export async function issueTokensFor(user: FullUser): Promise<AuthPayload> {
+  const family = newJti();
+  return issueTokens(user._id, user.role, family, toPublicUser(user));
+}
+
+/**
+ * Legacy entrypoint kept for backwards compatibility (and currently unused after
+ * the controller refactor). Performs credential check + token issue in one call.
+ * Note: this does NOT enforce 2FA — callers that care about 2FA should use
+ * loginCheckCredentials + issueTokensFor and check user.totpEnabled themselves.
+ */
+export async function login(email: string, password: string): Promise<AuthPayload> {
+  const user = await loginCheckCredentials(email, password);
+  return issueTokensFor(user);
 }
 
 export async function rotate(rawRefreshToken: string): Promise<{ accessToken: string; refreshToken: string }> {
@@ -109,24 +146,16 @@ export async function logout(rawRefreshToken: string | undefined): Promise<void>
 }
 
 export async function getMe(userId: string) {
-  const user = await User.findById(userId);
+  const user = (await User.findById(userId)) as FullUser | null;
   if (!user) throw new UnauthorizedError("User not found");
-  return {
-    id: user._id.toString(),
-    email: user.email,
-    name: user.name,
-    role: user.role,
-    isVerified: user.isVerified,
-    createdAt: (user as unknown as { createdAt: Date }).createdAt,
-    updatedAt: (user as unknown as { updatedAt: Date }).updatedAt,
-  };
+  return toPublicUser(user);
 }
 
 async function issueTokens(
   userId: Types.ObjectId,
   role: Role,
   family: string,
-  publicUser: AuthPayload["user"],
+  publicUser: PublicUser,
 ): Promise<AuthPayload> {
   const jti = newJti();
   const accessToken = signAccessToken({ sub: userId.toString(), role });

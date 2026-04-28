@@ -2,12 +2,17 @@ import { useEffect } from "react";
 import { Provider } from "react-redux";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { Toaster } from "sonner";
 import { store } from "@/app/store";
 import { setupApiClient } from "@/api/axios";
 import { queryClient } from "@/lib/queryClient";
 import { ThemeProvider } from "@/lib/theme";
 import { ProtectedRoute } from "@/features/auth/ProtectedRoute";
 import { LoginPage } from "@/features/auth/LoginPage";
+import { RequestResetPage } from "@/features/auth/pages/RequestResetPage";
+import { ResetPasswordPage } from "@/features/auth/pages/ResetPasswordPage";
+import { ChangePasswordPage } from "@/features/auth/pages/ChangePasswordPage";
+import { SecurityPage } from "@/features/auth/pages/SecurityPage";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ProfilePage } from "@/features/employees/pages/ProfilePage";
@@ -34,10 +39,14 @@ function Routed() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/forgot-password" element={<RequestResetPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/change-password" element={<ChangePasswordPage />} />
+          <Route path="/security" element={<SecurityPage />} />
           <Route path="/people" element={<PeopleListPage />} />
           <Route
             path="/people/new"
@@ -84,6 +93,7 @@ export default function App() {
               <IncomingCallDialog />
               <CallView />
             </CallProvider>
+            <Toaster position="top-right" richColors closeButton />
           </BrowserRouter>
         </QueryClientProvider>
       </ThemeProvider>

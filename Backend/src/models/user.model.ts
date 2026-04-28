@@ -40,6 +40,14 @@ const userSchema = new Schema(
     emergencyContact: { type: emergencyContactSchema, default: null },
     resumeUrl: { type: String },
     resumeKey: { type: String, select: false },
+
+    // Auth-extensions: force-change-password + TOTP 2FA
+    // mustChangePassword is true when the password was server-generated
+    // (HR-created users or initial admin) so the FE can force a change on first login.
+    mustChangePassword: { type: Boolean, default: false },
+    // TOTP shared secret (base32). select:false so it never leaks via /auth/me, etc.
+    totpSecret: { type: String, default: null, select: false },
+    totpEnabled: { type: Boolean, default: false },
   },
   { timestamps: true },
 );

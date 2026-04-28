@@ -13,6 +13,16 @@ interface LoginResponse {
   user: AuthUser;
 }
 
+// /auth/login may return either { accessToken, user } OR { requires2FA: true }
+// when the user has TOTP enabled. The thunk discriminates and returns a tagged union.
+type LoginResult =
+  | { kind: "ok"; accessToken: string; user: AuthUser }
+  | { kind: "2fa-required" };
+
+interface Login2FAInput extends LoginInput {
+  token: string;
+}
+
 function extractMessage(err: unknown, fallback: string): string {
   if (axios.isAxiosError(err)) {
     const data = err.response?.data as { message?: string } | undefined;
@@ -22,12 +32,30 @@ function extractMessage(err: unknown, fallback: string): string {
 }
 
 export const loginThunk = createAsyncThunk<
-  LoginResponse,
+  LoginResult,
   LoginInput,
   { rejectValue: string }
 >("auth/login", async (input, { dispatch, rejectWithValue }) => {
   try {
-    const res = await getApi().post<LoginResponse>("/auth/login", input);
+    const res = await getApi().post<LoginResponse | { requires2FA: true }>("/auth/login", input);
+    if ("requires2FA" in res.data && res.data.requires2FA) {
+      return { kind: "2fa-required" } as const;
+    }
+    const data = res.data as LoginResponse;
+    dispatch(sessionEstablished({ accessToken: data.accessToken, user: data.user }));
+    return { kind: "ok", accessToken: data.accessToken, user: data.user } as const;
+  } catch (err) {
+    return rejectWithValue(extractMessage(err, "Login failed"));
+  }
+});
+
+export const login2FAThunk = createAsyncThunk<
+  LoginResponse,
+  Login2FAInput,
+  { rejectValue: string }
+>("auth/login2fa", async (input, { dispatch, rejectWithValue }) => {
+  try {
+    const res = await getApi().post<LoginResponse>("/auth/login-2fa", input);
     dispatch(sessionEstablished({ accessToken: res.data.accessToken, user: res.data.user }));
     return res.data;
   } catch (err) {
