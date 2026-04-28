@@ -1,0 +1,19 @@
+{
+  "name": "global-neo-chain-project",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "./dev.sh",
+    "dev:backend": "pnpm --dir Backend dev",
+    "dev:frontend": "pnpm --dir Frontend dev",
+    "seed": "pnpm --dir Backend seed",
+    "gen:api": "pnpm --dir Frontend gen:api",
+    "test": "pnpm --dir Backend test && pnpm --dir Frontend test",
+    "compose:up": "docker compose up -d",
+    "compose:down": "docker compose down",
+    "compose:logs": "docker compose logs -f"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
