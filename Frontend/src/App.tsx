@@ -10,6 +10,12 @@ import { ProtectedRoute } from "@/features/auth/ProtectedRoute";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { EmptyState } from "@/components/common/EmptyState";
+import { ProfilePage } from "@/features/employees/pages/ProfilePage";
+import { PeopleListPage } from "@/features/employees/pages/PeopleListPage";
+import { EmployeeDetailPage } from "@/features/employees/pages/EmployeeDetailPage";
+import { CreateEmployeePage } from "@/features/employees/pages/CreateEmployeePage";
+import { DepartmentsPage } from "@/features/employees/pages/DepartmentsPage";
+import { RoleGate } from "@/features/auth/RoleGate";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 setupApiClient(store, API_BASE);
@@ -20,7 +26,26 @@ function Routed() {
       <Route path="/login" element={<LoginPage />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/" element={<Navigate to="/profile" replace />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/people" element={<PeopleListPage />} />
+          <Route
+            path="/people/new"
+            element={
+              <RoleGate roles={["HR", "ADMIN"]} fallback={<EmptyState label="Forbidden" hint="HR or Admin only." />}>
+                <CreateEmployeePage />
+              </RoleGate>
+            }
+          />
+          <Route path="/people/:id" element={<EmployeeDetailPage />} />
+          <Route
+            path="/departments"
+            element={
+              <RoleGate roles={["HR", "ADMIN"]} fallback={<EmptyState label="Forbidden" hint="HR or Admin only." />}>
+                <DepartmentsPage />
+              </RoleGate>
+            }
+          />
           <Route path="/dashboard" element={<EmptyState label="Dashboard" />} />
           <Route path="/tasks" element={<EmptyState label="Tasks" />} />
           <Route path="/messages" element={<EmptyState label="Messages" />} />
