@@ -21,12 +21,12 @@ const ACTIVE_NAV = [
   { to: "/departments", label: "Departments", Icon: Building2, roles: ["HR", "ADMIN"] as ("HR" | "ADMIN")[] },
   { to: "/attendance", label: "Attendance", Icon: CalendarClock, roles: undefined },
   { to: "/tasks", label: "Tasks", Icon: ListChecks, roles: undefined },
+  { to: "/expenses", label: "Expenses", Icon: Receipt, roles: undefined },
 ];
 
 const STUB_NAV = [
   { to: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
   { to: "/messages", label: "Messages", Icon: MessageSquare },
-  { to: "/expenses", label: "Expenses", Icon: Receipt },
   { to: "/payroll", label: "Payroll", Icon: BadgeDollarSign },
 ];
 

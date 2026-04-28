@@ -2,7 +2,7 @@ import { mkdir, writeFile, unlink } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { v4 as uuid } from "uuid";
 
-export type StorageScope = "avatar" | "resume";
+export type StorageScope = "avatar" | "resume" | "receipt";
 
 export interface SavedFile {
   key: string;
@@ -34,6 +34,7 @@ const MIME_EXTENSIONS: Record<string, string> = {
 const ALLOWED_BY_SCOPE: Record<StorageScope, string[]> = {
   avatar: ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"],
   resume: ["application/pdf"],
+  receipt: ["application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp"],
 };
 
 class LocalStorage implements FileStorage {

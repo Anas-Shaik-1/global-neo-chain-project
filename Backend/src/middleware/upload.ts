@@ -4,6 +4,7 @@ import { ValidationError } from "../lib/errors.js";
 
 const AVATAR_MIME = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"];
 const RESUME_MIME = ["application/pdf"];
+const RECEIPT_MIME = ["application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp"];
 
 function fileFilter(allowed: string[]) {
   return (_req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
@@ -22,4 +23,10 @@ export const uploadResume = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
   fileFilter: fileFilter(RESUME_MIME),
+}).single("file");
+
+export const uploadReceipt = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  fileFilter: fileFilter(RECEIPT_MIME),
 }).single("file");
