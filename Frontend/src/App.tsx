@@ -16,6 +16,7 @@ import { EmployeeDetailPage } from "@/features/employees/pages/EmployeeDetailPag
 import { CreateEmployeePage } from "@/features/employees/pages/CreateEmployeePage";
 import { DepartmentsPage } from "@/features/employees/pages/DepartmentsPage";
 import { AttendancePage } from "@/features/attendance/pages/AttendancePage";
+import { TasksPage } from "@/features/tasks/pages/TasksPage";
 import { RoleGate } from "@/features/auth/RoleGate";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
@@ -48,7 +49,7 @@ function Routed() {
             }
           />
           <Route path="/dashboard" element={<EmptyState label="Dashboard" />} />
-          <Route path="/tasks" element={<EmptyState label="Tasks" />} />
+          <Route path="/tasks" element={<TasksPage />} />
           <Route path="/messages" element={<EmptyState label="Messages" />} />
           <Route path="/attendance" element={<AttendancePage />} />
           <Route path="/expenses" element={<EmptyState label="Expenses" />} />

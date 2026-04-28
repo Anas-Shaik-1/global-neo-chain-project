@@ -20,11 +20,11 @@ const ACTIVE_NAV = [
   { to: "/people", label: "People", Icon: Users, roles: undefined },
   { to: "/departments", label: "Departments", Icon: Building2, roles: ["HR", "ADMIN"] as ("HR" | "ADMIN")[] },
   { to: "/attendance", label: "Attendance", Icon: CalendarClock, roles: undefined },
+  { to: "/tasks", label: "Tasks", Icon: ListChecks, roles: undefined },
 ];
 
 const STUB_NAV = [
   { to: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
-  { to: "/tasks", label: "Tasks", Icon: ListChecks },
   { to: "/messages", label: "Messages", Icon: MessageSquare },
   { to: "/expenses", label: "Expenses", Icon: Receipt },
   { to: "/payroll", label: "Payroll", Icon: BadgeDollarSign },

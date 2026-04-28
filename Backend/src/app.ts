@@ -14,10 +14,12 @@ import { healthRouter } from "./modules/health/health.routes.js";
 import { employeesRouter, positionsRouter } from "./modules/employees/employees.routes.js";
 import { departmentsRouter } from "./modules/departments/departments.routes.js";
 import { attendanceRouter } from "./modules/attendance/attendance.routes.js";
+import { projectsRouter, tasksRouter } from "./modules/tasks/tasks.routes.js";
 import "./modules/auth/auth.schema.js";
 import "./modules/employees/employees.schema.js";
 import "./modules/departments/departments.schema.js";
 import "./modules/attendance/attendance.schema.js";
+import "./modules/tasks/tasks.schema.js";
 import { buildOpenApiDocument } from "./openapi/spec.js";
 
 export function createApp() {
@@ -44,6 +46,8 @@ export function createApp() {
   app.use("/positions", positionsRouter);
   app.use("/departments", departmentsRouter);
   app.use("/attendance", attendanceRouter);
+  app.use("/projects", projectsRouter);
+  app.use("/tasks", tasksRouter);
 
   app.use(errorHandler);
   return app;
