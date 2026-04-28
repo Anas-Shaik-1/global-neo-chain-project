@@ -4,7 +4,7 @@ import { ROLES } from "../../models/user.model.js";
 
 export const LoginBody = z
   .object({
-    email: z.string().email().openapi({ example: "admin@sms-ip.local" }),
+    email: z.string().email().openapi({ example: "admin@global-neochain.local" }),
     password: z.string().min(1).openapi({ example: "ChangeMe-Admin-1!" }),
   })
   .openapi("LoginBody");

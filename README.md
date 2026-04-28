@@ -1,6 +1,6 @@
-# Global NeoChain — SMS-IP Employee Management System
+# Global NeoChain — Employee Management System
 
-Production-grade Employee Management System (EMS) for SMS-IP (Sehat - Meyer - Sejahtera Indonesian Professionals).
+Production-grade Employee Management System (EMS) for the Global NeoChain platform.
 
 ## Stack
 
@@ -73,7 +73,7 @@ pnpm --dir Frontend test
 
 ## Auth
 
-- Default seeded admin: `admin@sms-ip.local` / value of `SEED_ADMIN_PASSWORD`.
+- Default seeded admin: `admin@global-neochain.local` / value of `SEED_ADMIN_PASSWORD`.
 - Access token (15 min) returned in JSON; refresh token (7 days) in `HttpOnly Secure SameSite=Strict` cookie at `Path=/auth`.
 - Refresh rotates on every `/auth/refresh`; re-using a stale refresh revokes the entire family.
 - Roles: `ADMIN`, `HR`, `EMPLOYEE`, `PM`.

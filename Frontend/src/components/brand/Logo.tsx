@@ -12,7 +12,7 @@ function LogoMark({ showTagline, className }: Pick<Props, "showTagline" | "class
   return (
     <div className={cn("flex items-center gap-1.5 sm:gap-3", className)}>
       <div className="relative h-9 w-9 shrink-0 sm:h-10 sm:w-10">
-        <img src="/logo.png" alt="SMS-IP" className="h-full w-full object-contain" />
+        <img src="/logo.png" alt="Global NeoChain" className="h-full w-full object-contain" />
       </div>
       <BrandText showTagline={showTagline} />
     </div>

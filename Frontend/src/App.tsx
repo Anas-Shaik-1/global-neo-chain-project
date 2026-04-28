@@ -36,7 +36,7 @@ function Routed() {
 
 export default function App() {
   useEffect(() => {
-    document.title = "SMS-IP — Employee Management";
+    document.title = "Global NeoChain — Employee Management";
   }, []);
   return (
     <Provider store={store}>

@@ -36,7 +36,7 @@ export function LoginPage() {
           <Logo showTagline />
           <div>
             <CardTitle>Welcome back</CardTitle>
-            <CardDescription>Sign in to your SMS-IP workspace</CardDescription>
+            <CardDescription>Sign in to your Global NeoChain workspace</CardDescription>
           </div>
         </CardHeader>
         <CardContent>
