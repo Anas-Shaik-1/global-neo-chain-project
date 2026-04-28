@@ -1,8 +1,47 @@
 import bcrypt from "bcrypt";
 import { connectDb, disconnectDb } from "./db/index.js";
-import { User } from "./models/user.model.js";
+import { User, type Role } from "./models/user.model.js";
 import { config } from "./config/index.js";
 import { logger } from "./lib/logger.js";
+
+interface DemoUser {
+  email: string;
+  password: string;
+  name: string;
+  role: Role;
+  jobTitle: string;
+}
+
+const DEMO_USERS: DemoUser[] = [
+  {
+    email: config.SEED_ADMIN_EMAIL,
+    password: config.SEED_ADMIN_PASSWORD,
+    name: "Admin",
+    role: "ADMIN",
+    jobTitle: "Platform Administrator",
+  },
+  {
+    email: "hr@global-neochain.local",
+    password: "ChangeMe-HR-1!",
+    name: "Hannah Rivera",
+    role: "HR",
+    jobTitle: "Head of People",
+  },
+  {
+    email: "pm@global-neochain.local",
+    password: "ChangeMe-PM-1!",
+    name: "Priya Mehta",
+    role: "PM",
+    jobTitle: "Project Manager",
+  },
+  {
+    email: "employee@global-neochain.local",
+    password: "ChangeMe-Employee-1!",
+    name: "Eli Mwangi",
+    role: "EMPLOYEE",
+    jobTitle: "Software Engineer",
+  },
+];
 
 async function main() {
   await connectDb();
@@ -17,20 +56,30 @@ async function main() {
     logger.info({ count: backfill.modifiedCount }, "backfilled isActive on legacy users");
   }
 
-  const existing = await User.findOne({ email: config.SEED_ADMIN_EMAIL });
-  if (existing) {
-    logger.info({ email: config.SEED_ADMIN_EMAIL }, "admin already exists; skipping");
-  } else {
-    const passwordHash = await bcrypt.hash(config.SEED_ADMIN_PASSWORD, 12);
+  for (const u of DEMO_USERS) {
+    const existing = await User.findOne({ email: u.email });
+    if (existing) {
+      logger.info({ email: u.email, role: u.role }, "user already exists; skipping");
+      continue;
+    }
+    const passwordHash = await bcrypt.hash(u.password, 12);
     await User.create({
-      email: config.SEED_ADMIN_EMAIL,
+      email: u.email,
       passwordHash,
-      name: "Admin",
-      role: "ADMIN",
+      name: u.name,
+      role: u.role,
+      jobTitle: u.jobTitle,
       isVerified: true,
+      isActive: true,
     });
-    logger.info({ email: config.SEED_ADMIN_EMAIL }, "admin created");
+    logger.info({ email: u.email, role: u.role }, "user created");
   }
+
+  logger.info("seed complete — demo credentials:");
+  for (const u of DEMO_USERS) {
+    logger.info(`  ${u.role.padEnd(8)} ${u.email}  /  ${u.password}`);
+  }
+
   await disconnectDb();
 }
 
