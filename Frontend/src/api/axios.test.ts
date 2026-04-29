@@ -21,7 +21,7 @@ describe("axios client", () => {
     store.dispatch(
       sessionEstablished({
         accessToken: "tk-1",
-        user: { id: "u1", email: "a@b.com", name: "A", role: "ADMIN", isVerified: true },
+        user: { id: "u1", email: "a@b.com", name: "A", role: "ADMIN", isProjectManager: false, isVerified: true },
       }),
     );
     const api = createApiClient({ store, baseURL: "http://api" });
@@ -39,7 +39,7 @@ describe("axios client", () => {
     store.dispatch(
       sessionEstablished({
         accessToken: "old",
-        user: { id: "u1", email: "a@b.com", name: "A", role: "ADMIN", isVerified: true },
+        user: { id: "u1", email: "a@b.com", name: "A", role: "ADMIN", isProjectManager: false, isVerified: true },
       }),
     );
     const api = createApiClient({ store, baseURL: "http://api" });
@@ -64,7 +64,7 @@ describe("axios client", () => {
     store.dispatch(
       sessionEstablished({
         accessToken: "old",
-        user: { id: "u1", email: "a@b.com", name: "A", role: "ADMIN", isVerified: true },
+        user: { id: "u1", email: "a@b.com", name: "A", role: "ADMIN", isProjectManager: false, isVerified: true },
       }),
     );
     const api = createApiClient({ store, baseURL: "http://api" });
@@ -82,7 +82,7 @@ describe("axios client", () => {
     store.dispatch(
       sessionEstablished({
         accessToken: "old",
-        user: { id: "u1", email: "a@b.com", name: "A", role: "ADMIN", isVerified: true },
+        user: { id: "u1", email: "a@b.com", name: "A", role: "ADMIN", isProjectManager: false, isVerified: true },
       }),
     );
     const api = createApiClient({ store, baseURL: "http://api" });

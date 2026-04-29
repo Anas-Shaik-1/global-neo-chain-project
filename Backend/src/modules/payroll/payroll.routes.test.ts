@@ -56,7 +56,7 @@ async function seedAndToken(role: "ADMIN" | "HR" | "EMPLOYEE", email: string) {
   const { signAccessToken } = await import("../../lib/tokens.js");
   return {
     id: u._id.toString(),
-    token: signAccessToken({ sub: u._id.toString(), role }),
+    token: signAccessToken({ sub: u._id.toString(), role, isProjectManager: false }),
   };
 }
 

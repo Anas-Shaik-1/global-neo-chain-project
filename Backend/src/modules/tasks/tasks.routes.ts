@@ -2,7 +2,7 @@ import { Router } from "express";
 import * as ctl from "./tasks.controller.js";
 import { validate } from "../../middleware/validate.js";
 import { requireAuth } from "../../middleware/auth.js";
-import { requireRole } from "../../middleware/requireRole.js";
+import { requirePMOrElevated } from "../../middleware/requirePMOrElevated.js";
 import {
   CreateProjectBody,
   CreateTaskBody,
@@ -16,7 +16,9 @@ projectsRouter.use(requireAuth);
 projectsRouter.get("/", ctl.getProjectsList);
 projectsRouter.post(
   "/",
-  requireRole("PM", "HR", "ADMIN"),
+  // Project creation is an ADMIN/HR-or-PM action. Employees with the
+  // isProjectManager flag flipped on are also allowed.
+  requirePMOrElevated,
   validate(CreateProjectBody),
   ctl.postProject,
 );

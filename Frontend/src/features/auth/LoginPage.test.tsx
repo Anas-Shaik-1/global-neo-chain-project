@@ -46,7 +46,7 @@ describe("LoginPage", () => {
   it("on submit redirects to /dashboard on success", async () => {
     mock.onPost("/auth/login").reply(200, {
       accessToken: "tk",
-      user: { id: "u1", email: "a@b.com", name: "A", role: "ADMIN", isVerified: true },
+      user: { id: "u1", email: "a@b.com", name: "A", role: "ADMIN", isProjectManager: false, isVerified: true },
     });
     renderPage();
     await userEvent.type(screen.getByLabelText(/work email/i), "a@b.com");

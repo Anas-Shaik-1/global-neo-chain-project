@@ -33,13 +33,13 @@ describe("auth + requireRole middleware", () => {
     const { requireAuth } = await import("./auth.js");
     const { errorHandler } = await import("./error.js");
     const { signAccessToken } = await import("../lib/tokens.js");
-    const token = signAccessToken({ sub: "u1", role: "ADMIN" });
+    const token = signAccessToken({ sub: "u1", role: "ADMIN", isProjectManager: false });
     const app = express();
     app.get("/", requireAuth, (req, res) => res.json(req.user));
     app.use(errorHandler);
     const res = await request(app).get("/").set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ id: "u1", role: "ADMIN" });
+    expect(res.body).toEqual({ id: "u1", role: "ADMIN", isProjectManager: false });
   });
 
   it("requireRole allows when role matches", async () => {
@@ -47,7 +47,7 @@ describe("auth + requireRole middleware", () => {
     const { requireRole } = await import("./requireRole.js");
     const { errorHandler } = await import("./error.js");
     const { signAccessToken } = await import("../lib/tokens.js");
-    const token = signAccessToken({ sub: "u1", role: "ADMIN" });
+    const token = signAccessToken({ sub: "u1", role: "ADMIN", isProjectManager: false });
     const app = express();
     app.get("/", requireAuth, requireRole("ADMIN"), (_req, res) => res.json({ ok: true }));
     app.use(errorHandler);
@@ -60,7 +60,7 @@ describe("auth + requireRole middleware", () => {
     const { requireRole } = await import("./requireRole.js");
     const { errorHandler } = await import("./error.js");
     const { signAccessToken } = await import("../lib/tokens.js");
-    const token = signAccessToken({ sub: "u1", role: "EMPLOYEE" });
+    const token = signAccessToken({ sub: "u1", role: "EMPLOYEE", isProjectManager: false });
     const app = express();
     app.get("/", requireAuth, requireRole("ADMIN"), (_req, res) => res.json({ ok: true }));
     app.use(errorHandler);
@@ -72,7 +72,7 @@ describe("auth + requireRole middleware", () => {
     const { requireAuth } = await import("./auth.js");
     const { errorHandler } = await import("./error.js");
     const { signAccessToken } = await import("../lib/tokens.js");
-    const token = signAccessToken({ sub: "u1", role: "GUEST" }); // GUEST is not in ROLES
+    const token = signAccessToken({ sub: "u1", role: "GUEST", isProjectManager: false }); // GUEST is not in ROLES
     const app = express();
     app.get("/", requireAuth, (_req, res) => res.json({ ok: true }));
     app.use(errorHandler);

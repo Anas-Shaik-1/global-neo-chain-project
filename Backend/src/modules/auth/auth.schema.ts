@@ -15,6 +15,7 @@ export const PublicUser = z
     email: z.string().email(),
     name: z.string(),
     role: z.enum(ROLES),
+    isProjectManager: z.boolean(),
     isVerified: z.boolean(),
     mustChangePassword: z.boolean(),
     totpEnabled: z.boolean(),

@@ -1,6 +1,6 @@
 import { Schema, model, type InferSchemaType, type Model, Types } from "mongoose";
 
-export const ROLES = ["ADMIN", "HR", "EMPLOYEE", "PM"] as const;
+export const ROLES = ["ADMIN", "HR", "EMPLOYEE"] as const;
 export type Role = (typeof ROLES)[number];
 
 export const EMPLOYMENT_TYPES = ["FULL_TIME", "PART_TIME", "CONTRACT", "INTERN"] as const;
@@ -21,6 +21,9 @@ const userSchema = new Schema(
     passwordHash: { type: String, required: true, select: false },
     name: { type: String, required: true, trim: true },
     role: { type: String, enum: ROLES, required: true, default: "EMPLOYEE" },
+    // PM is a sub-role flag on Employees (and elevatable on HR/Admin too — they
+    // already have project-creation rights). Only Admin can flip this.
+    isProjectManager: { type: Boolean, required: true, default: false },
     isVerified: { type: Boolean, default: false },
     isActive: { type: Boolean, required: true, default: true },
 

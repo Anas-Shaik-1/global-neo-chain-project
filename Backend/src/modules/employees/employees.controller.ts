@@ -71,6 +71,26 @@ export async function postDeactivate(req: Request, res: Response, next: NextFunc
   }
 }
 
+export async function postPromotePM(req: Request, res: Response, next: NextFunction) {
+  try {
+    const id = req.params.id as string;
+    const out = await svc.setProjectManager(id, true);
+    res.json(out);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function postDemotePM(req: Request, res: Response, next: NextFunction) {
+  try {
+    const id = req.params.id as string;
+    const out = await svc.setProjectManager(id, false);
+    res.json(out);
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function ensureSelfOrElevated(req: Request) {
   const me = requireUser(req);
   if (me.role === "HR" || me.role === "ADMIN") return;

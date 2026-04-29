@@ -14,7 +14,7 @@ function build() {
   const store = configureStore({ reducer: { auth: authSlice.reducer, ui: uiSlice.reducer } });
   store.dispatch(sessionEstablished({
     accessToken: "t",
-    user: { id: "u1", email: "u@b.com", name: "U", role: "HR", isVerified: true },
+    user: { id: "u1", email: "u@b.com", name: "U", role: "HR", isProjectManager: false, isVerified: true },
   }));
   setupApiClient(store, "http://api");
   return { store, qc: new QueryClient({ defaultOptions: { queries: { retry: false } } }) };

@@ -28,7 +28,8 @@ export interface PublicProfile {
   id: string;
   email: string;
   name: string;
-  role: "ADMIN" | "HR" | "EMPLOYEE" | "PM";
+  role: "ADMIN" | "HR" | "EMPLOYEE";
+  isProjectManager: boolean;
   isActive: boolean;
   jobTitle?: string | null;
   departmentId?: string | null;
@@ -149,6 +150,38 @@ export function useDeactivateEmployee() {
       toast.success("Employee deactivated");
     },
     onError: (err) => toast.error(errorMessage(err, "Could not deactivate employee")),
+  });
+}
+
+export function usePromoteEmployeePM(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api().post(`/employees/${id}/promote-pm`);
+      return res.data as FullProfile;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: employeeKeys.detail(id) });
+      qc.invalidateQueries({ queryKey: employeeKeys.all });
+      toast.success("Promoted to Project Manager");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Failed to promote")),
+  });
+}
+
+export function useDemoteEmployeePM(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api().post(`/employees/${id}/demote-pm`);
+      return res.data as FullProfile;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: employeeKeys.detail(id) });
+      qc.invalidateQueries({ queryKey: employeeKeys.all });
+      toast.success("Demoted from Project Manager");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Failed to demote")),
   });
 }
 

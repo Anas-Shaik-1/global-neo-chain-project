@@ -6,7 +6,7 @@ import { ROLES, type Role } from "../models/user.model.js";
 declare global {
   namespace Express {
     interface Request {
-      user?: { id: string; role: Role };
+      user?: { id: string; role: Role; isProjectManager: boolean };
     }
   }
 }
@@ -22,7 +22,12 @@ export const requireAuth: RequestHandler = (req, _res, next) => {
     if (!(ROLES as readonly string[]).includes(payload.role)) {
       return next(new UnauthorizedError("Invalid or expired token"));
     }
-    req.user = { id: payload.sub, role: payload.role as Role };
+    req.user = {
+      id: payload.sub,
+      role: payload.role as Role,
+      // verifyAccessToken already defaults missing claim to false for legacy tokens.
+      isProjectManager: payload.isProjectManager,
+    };
     next();
   } catch {
     next(new UnauthorizedError("Invalid or expired token"));

@@ -19,15 +19,24 @@ beforeAll(() => {
 describe("tokens", () => {
   it("signs and verifies an access token", async () => {
     const { signAccessToken, verifyAccessToken } = await import("./tokens.js");
-    const token = signAccessToken({ sub: "user-1", role: "ADMIN" });
+    const token = signAccessToken({ sub: "user-1", role: "ADMIN", isProjectManager: false });
     const payload = verifyAccessToken(token);
     expect(payload.sub).toBe("user-1");
     expect(payload.role).toBe("ADMIN");
+    expect(payload.isProjectManager).toBe(false);
+  });
+
+  it("round-trips isProjectManager:true through sign/verify", async () => {
+    const { signAccessToken, verifyAccessToken } = await import("./tokens.js");
+    const token = signAccessToken({ sub: "user-2", role: "EMPLOYEE", isProjectManager: true });
+    const payload = verifyAccessToken(token);
+    expect(payload.role).toBe("EMPLOYEE");
+    expect(payload.isProjectManager).toBe(true);
   });
 
   it("throws on a tampered access token", async () => {
     const { signAccessToken, verifyAccessToken } = await import("./tokens.js");
-    const token = signAccessToken({ sub: "user-1", role: "ADMIN" });
+    const token = signAccessToken({ sub: "user-1", role: "ADMIN", isProjectManager: false });
     const tampered = token.slice(0, -2) + (token.endsWith("a") ? "bb" : "aa");
     expect(() => verifyAccessToken(tampered)).toThrow();
   });

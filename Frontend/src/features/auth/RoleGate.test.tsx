@@ -10,11 +10,15 @@ function buildStore() {
   return configureStore({ reducer: { auth: authSlice.reducer, ui: uiSlice.reducer } });
 }
 
-const sampleUser = (role: "ADMIN" | "HR" | "EMPLOYEE" | "PM") => ({
+const sampleUser = (
+  role: "ADMIN" | "HR" | "EMPLOYEE",
+  isProjectManager = false,
+) => ({
   id: "u1",
   email: "a@b.com",
   name: "A",
   role,
+  isProjectManager,
   isVerified: true,
 });
 
@@ -50,5 +54,27 @@ describe("RoleGate", () => {
       </Provider>,
     );
     expect(screen.getByText("nope")).toBeInTheDocument();
+  });
+
+  it("requirePM renders children for an EMPLOYEE with isProjectManager=true", () => {
+    const store = buildStore();
+    store.dispatch(sessionEstablished({ accessToken: "t", user: sampleUser("EMPLOYEE", true) }));
+    render(
+      <Provider store={store}>
+        <RoleGate requirePM><span>pm-only</span></RoleGate>
+      </Provider>,
+    );
+    expect(screen.getByText("pm-only")).toBeInTheDocument();
+  });
+
+  it("requirePM renders fallback for an EMPLOYEE with isProjectManager=false", () => {
+    const store = buildStore();
+    store.dispatch(sessionEstablished({ accessToken: "t", user: sampleUser("EMPLOYEE", false) }));
+    render(
+      <Provider store={store}>
+        <RoleGate requirePM fallback={<span>denied</span>}><span>pm-only</span></RoleGate>
+      </Provider>,
+    );
+    expect(screen.getByText("denied")).toBeInTheDocument();
   });
 });

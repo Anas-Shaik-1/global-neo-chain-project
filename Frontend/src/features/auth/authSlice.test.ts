@@ -6,6 +6,7 @@ const sampleUser: AuthUser = {
   email: "a@b.com",
   name: "A",
   role: "ADMIN",
+  isProjectManager: false,
   isVerified: true,
 };
 

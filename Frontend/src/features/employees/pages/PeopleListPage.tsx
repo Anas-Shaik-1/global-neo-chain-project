@@ -80,7 +80,17 @@ export function PeopleListPage() {
                             <AvatarFallback className="text-xs">{initials}</AvatarFallback>
                           </Avatar>
                           <div className="flex flex-col gap-1">
-                            <span className="font-medium text-foreground">{p.name}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-foreground">{p.name}</span>
+                              {p.isProjectManager && (
+                                <span
+                                  className="rounded border border-border/60 bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                                  title="Project Manager"
+                                >
+                                  PM
+                                </span>
+                              )}
+                            </div>
                             <StatusBadge tone={p.isActive ? "success" : "default"}>
                               {p.isActive ? "Active" : "Inactive"}
                             </StatusBadge>

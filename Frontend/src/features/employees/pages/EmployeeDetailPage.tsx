@@ -7,7 +7,13 @@ import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { useAppSelector } from "@/app/hooks";
 import { useCall } from "@/features/calls/CallProvider";
-import { useEmployee, useDeactivateEmployee, type FullProfile } from "../api/hooks";
+import {
+  useEmployee,
+  useDeactivateEmployee,
+  usePromoteEmployeePM,
+  useDemoteEmployeePM,
+  type FullProfile,
+} from "../api/hooks";
 
 function isFullProfile(p: FullProfile | { id: string }): p is FullProfile {
   return "createdAt" in p;
@@ -18,8 +24,11 @@ export function EmployeeDetailPage() {
   const me = useAppSelector((s) => s.auth.user);
   const { data, isLoading } = useEmployee(id);
   const deactivate = useDeactivateEmployee();
+  const promotePM = usePromoteEmployeePM(id ?? "");
+  const demotePM = useDemoteEmployeePM(id ?? "");
   const call = useCall();
   const elevated = me?.role === "HR" || me?.role === "ADMIN";
+  const isAdmin = me?.role === "ADMIN";
 
   if (isLoading || !data) return <Skeleton className="h-96 w-full" />;
   const initials = data.name.split(" ").map((s) => s[0]).join("").slice(0, 2).toUpperCase();
@@ -51,11 +60,48 @@ export function EmployeeDetailPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           <Field label="Email" value={data.email} />
-          <Field label="Role" value={data.role} />
+          <Field
+            label="Role"
+            value={data.isProjectManager ? `${data.role} · Project Manager` : data.role}
+          />
           <Field label="Phone" value={data.phone ?? "—"} />
           <Field label="Bio" value={data.bio ?? "—"} />
         </CardContent>
       </Card>
+
+      {isAdmin && data.role === "EMPLOYEE" && (
+        <Card>
+          <CardHeader><CardTitle>Project Manager</CardTitle></CardHeader>
+          <CardContent className="flex flex-wrap items-center gap-3">
+            {data.isProjectManager ? (
+              <>
+                <StatusBadge tone="success">Project Manager</StatusBadge>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => demotePM.mutate()}
+                  disabled={demotePM.isPending}
+                >
+                  {demotePM.isPending ? "Demoting…" : "Demote"}
+                </Button>
+              </>
+            ) : (
+              <>
+                <span className="text-sm text-muted-foreground">
+                  This employee does not have Project Manager rights.
+                </span>
+                <Button
+                  size="sm"
+                  onClick={() => promotePM.mutate()}
+                  disabled={promotePM.isPending}
+                >
+                  {promotePM.isPending ? "Promoting…" : "Promote to Project Manager"}
+                </Button>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {showFull && (
         <Card>

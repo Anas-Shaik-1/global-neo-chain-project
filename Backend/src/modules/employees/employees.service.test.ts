@@ -25,7 +25,7 @@ beforeAll(async () => {
 afterAll(async () => { await stopTestDb(); });
 beforeEach(async () => { await clearTestDb(); });
 
-async function seedUser(role: "ADMIN" | "HR" | "EMPLOYEE" | "PM" = "EMPLOYEE", overrides: Record<string, unknown> = {}) {
+async function seedUser(role: "ADMIN" | "HR" | "EMPLOYEE" = "EMPLOYEE", overrides: Record<string, unknown> = {}) {
   const { User } = await import("../../models/user.model.js");
   return User.create({
     email: `u${Math.random()}@b.com`,
@@ -65,7 +65,9 @@ describe("employees.service projection helpers", () => {
     expect(canSeeFullProfile({ id: me, role: "ADMIN" }, other)).toBe(true);
     expect(canSeeFullProfile({ id: me, role: "EMPLOYEE" }, other)).toBe(false);
     expect(canSeeFullProfile({ id: me, role: "EMPLOYEE" }, me)).toBe(true);
-    expect(canSeeFullProfile({ id: me, role: "PM" }, other)).toBe(false);
+    // PM is no longer a primary role — its replacement is "EMPLOYEE with isProjectManager"
+    // and that does NOT grant full-profile access (PMs see only public data of others).
+    expect(canSeeFullProfile({ id: me, role: "EMPLOYEE" }, other)).toBe(false);
   });
 });
 

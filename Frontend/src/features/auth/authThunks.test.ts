@@ -19,6 +19,7 @@ const sampleUser = {
   email: "a@b.com",
   name: "A",
   role: "ADMIN" as const,
+  isProjectManager: false,
   isVerified: true,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),

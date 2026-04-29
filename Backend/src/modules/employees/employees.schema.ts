@@ -20,6 +20,7 @@ export const PublicProfile = z
     email: z.string().email(),
     name: z.string(),
     role: z.enum(ROLES),
+    isProjectManager: z.boolean(),
     isActive: z.boolean(),
     jobTitle: z.string().nullable().optional(),
     departmentId: z.string().nullable().optional(),
@@ -183,6 +184,32 @@ registry.registerPath({
   responses: {
     204: { description: "Deactivated" },
     403: { description: "Forbidden", ...json(ErrorRef) },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/employees/{id}/promote-pm",
+  tags: ["employees"],
+  security: sec,
+  request: { params: z.object({ id: objectIdString }) },
+  responses: {
+    200: { description: "Promoted", ...json(FullProfile) },
+    403: { description: "Forbidden", ...json(ErrorRef) },
+    404: { description: "Not found", ...json(ErrorRef) },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/employees/{id}/demote-pm",
+  tags: ["employees"],
+  security: sec,
+  request: { params: z.object({ id: objectIdString }) },
+  responses: {
+    200: { description: "Demoted", ...json(FullProfile) },
+    403: { description: "Forbidden", ...json(ErrorRef) },
+    404: { description: "Not found", ...json(ErrorRef) },
   },
 });
 

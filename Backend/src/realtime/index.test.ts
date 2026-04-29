@@ -44,7 +44,7 @@ describe("socket.io namespaces", () => {
 
   it("accepts /chat connection with valid token", async () => {
     const { signAccessToken } = await import("../lib/tokens.js");
-    const token = signAccessToken({ sub: "u1", role: "ADMIN" });
+    const token = signAccessToken({ sub: "u1", role: "ADMIN", isProjectManager: false });
     const socket = ioClient(`http://localhost:${port}/chat`, {
       reconnection: false,
       transports: ["websocket"],

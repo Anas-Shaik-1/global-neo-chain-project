@@ -12,6 +12,7 @@ interface PublicShape {
   email: string;
   name: string;
   role: Role;
+  isProjectManager: boolean;
   isActive: boolean;
   jobTitle?: string | null;
   departmentId?: string | null;
@@ -38,6 +39,7 @@ export function toPublicProfile(u: UserDoc, departmentName: string | null): Publ
     email: u.email,
     name: u.name,
     role: u.role,
+    isProjectManager: Boolean(u.isProjectManager),
     isActive: u.isActive,
     jobTitle: u.jobTitle ?? null,
     departmentId: u.departmentId ? u.departmentId.toString() : null,
@@ -200,6 +202,26 @@ export async function addPosition(userId: string, input: AddPositionInput) {
     endedAt: input.endedAt ?? null,
   });
   return pos;
+}
+
+/**
+ * Flips the isProjectManager sub-role flag on a user. Caller is expected to be
+ * Admin — the route handles the authorization. Returns the refreshed full
+ * profile so the FE can update its cached view in one round-trip.
+ *
+ * Only Employees can be promoted/demoted; Admin/HR already have project-creation
+ * rights, and the flag would be a no-op on them.
+ */
+export async function setProjectManager(userId: string, value: boolean): Promise<FullShape> {
+  const u = await User.findById(userId);
+  if (!u) throw new NotFoundError("Employee");
+  if (u.role !== "EMPLOYEE") {
+    throw new ForbiddenError("Only employees can be promoted to Project Manager");
+  }
+  u.isProjectManager = value;
+  await u.save();
+  const deptName = await loadDepartmentName(u.departmentId);
+  return toFullProfile(u, deptName);
 }
 
 export async function deactivate(id: string): Promise<void> {

@@ -67,7 +67,10 @@ export function Topbar() {
             <DropdownMenuLabel className="flex flex-col gap-0.5">
               <span className="text-sm font-medium text-foreground">{user?.name}</span>
               <span className="font-mono text-xs font-normal text-muted-foreground">{user?.email}</span>
-              <span className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-primary">{user?.role}</span>
+              <span className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-primary">
+                {user?.role}
+                {user?.isProjectManager ? " · PM" : ""}
+              </span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem disabled>

@@ -32,21 +32,30 @@ async function buildApp() {
   return createApp();
 }
 
-async function seed(role: "ADMIN" | "HR" | "EMPLOYEE" | "PM", email: string) {
+async function seed(
+  role: "ADMIN" | "HR" | "EMPLOYEE",
+  email: string,
+  overrides: { isProjectManager?: boolean } = {},
+) {
   const { User } = await import("../../models/user.model.js");
   return User.create({
     email,
     passwordHash: await bcrypt.hash("pw", 4),
     name: email,
     role,
+    isProjectManager: overrides.isProjectManager ?? false,
     dateOfBirth: new Date("1990-01-01"),
     address: "secret",
   });
 }
 
-async function tokenFor(userId: string, role: "ADMIN" | "HR" | "EMPLOYEE" | "PM") {
+async function tokenFor(
+  userId: string,
+  role: "ADMIN" | "HR" | "EMPLOYEE",
+  isProjectManager = false,
+) {
   const { signAccessToken } = await import("../../lib/tokens.js");
-  return signAccessToken({ sub: userId, role });
+  return signAccessToken({ sub: userId, role, isProjectManager });
 }
 
 describe("/employees", () => {
@@ -156,6 +165,34 @@ describe("/employees", () => {
       .set("Authorization", `Bearer ${tk}`)
       .attach("file", Buffer.from("PNGDATA"), { filename: "x.png", contentType: "image/png" });
     expect(res.status).toBe(400);
+  });
+
+  it("POST /employees/:id/promote-pm by EMPLOYEE returns 403", async () => {
+    const me = await seed("EMPLOYEE", "me@b.com");
+    const target = await seed("EMPLOYEE", "t@b.com");
+    const tk = await tokenFor(me._id.toString(), "EMPLOYEE");
+    const app = await buildApp();
+    const res = await request(app)
+      .post(`/employees/${target._id}/promote-pm`)
+      .set("Authorization", `Bearer ${tk}`);
+    expect(res.status).toBe(403);
+  });
+
+  it("POST /employees/:id/promote-pm by ADMIN flips isProjectManager true and reflects on GET", async () => {
+    const admin = await seed("ADMIN", "admin@b.com");
+    const target = await seed("EMPLOYEE", "t@b.com");
+    const tk = await tokenFor(admin._id.toString(), "ADMIN");
+    const app = await buildApp();
+    const promote = await request(app)
+      .post(`/employees/${target._id}/promote-pm`)
+      .set("Authorization", `Bearer ${tk}`);
+    expect(promote.status).toBe(200);
+    expect(promote.body.isProjectManager).toBe(true);
+    const view = await request(app)
+      .get(`/employees/${target._id}`)
+      .set("Authorization", `Bearer ${tk}`);
+    expect(view.status).toBe(200);
+    expect(view.body.isProjectManager).toBe(true);
   });
 
   it("POST /employees/:id/deactivate by HR sets isActive false and ends position", async () => {

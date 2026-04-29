@@ -36,7 +36,7 @@ async function seedAndToken(role: "ADMIN" | "HR" | "EMPLOYEE", email: string) {
     email, passwordHash: await bcrypt.hash("pw", 4), name: email, role,
   });
   const { signAccessToken } = await import("../../lib/tokens.js");
-  return { id: u._id.toString(), token: signAccessToken({ sub: u._id.toString(), role }) };
+  return { id: u._id.toString(), token: signAccessToken({ sub: u._id.toString(), role, isProjectManager: false }) };
 }
 
 describe("/departments", () => {

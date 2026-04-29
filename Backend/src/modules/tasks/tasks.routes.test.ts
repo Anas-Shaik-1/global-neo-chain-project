@@ -33,18 +33,27 @@ async function buildApp() {
   return createApp();
 }
 
-async function seedAndToken(role: "ADMIN" | "HR" | "EMPLOYEE" | "PM", email: string) {
+/**
+ * Seeds a user and returns an access token for them. The legacy "PM" role is
+ * gone — to simulate the old PM behaviour pass role="EMPLOYEE" and isPM=true.
+ */
+async function seedAndToken(
+  role: "ADMIN" | "HR" | "EMPLOYEE",
+  email: string,
+  isPM = false,
+) {
   const { User } = await import("../../models/user.model.js");
   const u = await User.create({
     email,
     passwordHash: await bcrypt.hash("pw", 4),
     name: email,
     role,
+    isProjectManager: isPM,
   });
   const { signAccessToken } = await import("../../lib/tokens.js");
   return {
     id: u._id.toString(),
-    token: signAccessToken({ sub: u._id.toString(), role }),
+    token: signAccessToken({ sub: u._id.toString(), role, isProjectManager: isPM }),
   };
 }
 
@@ -67,8 +76,8 @@ describe("/projects + /tasks", () => {
     expect(res.status).toBe(403);
   });
 
-  it("POST /projects by PM returns 201", async () => {
-    const pm = await seedAndToken("PM", "pm@b.com");
+  it("POST /projects by EMPLOYEE+PM returns 201", async () => {
+    const pm = await seedAndToken("EMPLOYEE", "pm@b.com", true);
     const app = await buildApp();
     const res = await request(app)
       .post("/projects")
@@ -79,7 +88,7 @@ describe("/projects + /tasks", () => {
   });
 
   it("POST /tasks by any authed user returns 201", async () => {
-    const pm = await seedAndToken("PM", "pm@b.com");
+    const pm = await seedAndToken("EMPLOYEE", "pm@b.com", true);
     const e = await seedAndToken("EMPLOYEE", "e@b.com");
     const app = await buildApp();
     const proj = await request(app)
@@ -97,7 +106,7 @@ describe("/projects + /tasks", () => {
   });
 
   it("PATCH /tasks/:id changes status", async () => {
-    const pm = await seedAndToken("PM", "pm@b.com");
+    const pm = await seedAndToken("EMPLOYEE", "pm@b.com", true);
     const app = await buildApp();
     const proj = await request(app)
       .post("/projects")
@@ -116,7 +125,7 @@ describe("/projects + /tasks", () => {
   });
 
   it("POST /tasks/:id/comments returns comment with authorName", async () => {
-    const pm = await seedAndToken("PM", "pm@b.com");
+    const pm = await seedAndToken("EMPLOYEE", "pm@b.com", true);
     const app = await buildApp();
     const proj = await request(app)
       .post("/projects")
@@ -136,7 +145,7 @@ describe("/projects + /tasks", () => {
   });
 
   it("GET /tasks/:id/activity returns 200 with at least the CREATED entry", async () => {
-    const pm = await seedAndToken("PM", "pm@b.com");
+    const pm = await seedAndToken("EMPLOYEE", "pm@b.com", true);
     const app = await buildApp();
     const proj = await request(app)
       .post("/projects")
@@ -156,7 +165,7 @@ describe("/projects + /tasks", () => {
   });
 
   it("GET /tasks/:id/subtasks returns sub-tasks only", async () => {
-    const pm = await seedAndToken("PM", "pm@b.com");
+    const pm = await seedAndToken("EMPLOYEE", "pm@b.com", true);
     const app = await buildApp();
     const proj = await request(app)
       .post("/projects")

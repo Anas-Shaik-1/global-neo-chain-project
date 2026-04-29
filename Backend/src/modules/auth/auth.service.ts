@@ -19,6 +19,7 @@ export interface PublicUser {
   email: string;
   name: string;
   role: Role;
+  isProjectManager: boolean;
   isVerified: boolean;
   mustChangePassword: boolean;
   totpEnabled: boolean;
@@ -44,6 +45,7 @@ function toPublicUser(user: FullUser): PublicUser {
     email: user.email,
     name: user.name,
     role: user.role,
+    isProjectManager: Boolean(user.isProjectManager),
     isVerified: user.isVerified,
     mustChangePassword: Boolean(user.mustChangePassword),
     totpEnabled: Boolean(user.totpEnabled),
@@ -70,7 +72,7 @@ export async function loginCheckCredentials(email: string, password: string): Pr
 /** Issues an access + refresh token pair for an already-validated user. */
 export async function issueTokensFor(user: FullUser): Promise<AuthPayload> {
   const family = newJti();
-  return issueTokens(user._id, user.role, family, toPublicUser(user));
+  return issueTokens(user._id, user.role, Boolean(user.isProjectManager), family, toPublicUser(user));
 }
 
 /**
@@ -119,7 +121,11 @@ export async function rotate(rawRefreshToken: string): Promise<{ accessToken: st
   const user = await User.findById(claimed.userId);
   if (!user) throw new UnauthorizedError("User not found");
 
-  const accessToken = signAccessToken({ sub: user._id.toString(), role: user.role });
+  const accessToken = signAccessToken({
+    sub: user._id.toString(),
+    role: user.role,
+    isProjectManager: Boolean(user.isProjectManager),
+  });
   const refreshToken = signRefreshToken({ sub: user._id.toString(), jti: newRefreshJti, family: claimed.family });
 
   await RefreshToken.create({
@@ -154,11 +160,12 @@ export async function getMe(userId: string) {
 async function issueTokens(
   userId: Types.ObjectId,
   role: Role,
+  isProjectManager: boolean,
   family: string,
   publicUser: PublicUser,
 ): Promise<AuthPayload> {
   const jti = newJti();
-  const accessToken = signAccessToken({ sub: userId.toString(), role });
+  const accessToken = signAccessToken({ sub: userId.toString(), role, isProjectManager });
   const refreshToken = signRefreshToken({ sub: userId.toString(), jti, family });
   await RefreshToken.create({
     jti,

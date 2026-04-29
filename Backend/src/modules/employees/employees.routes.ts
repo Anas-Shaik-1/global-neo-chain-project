@@ -21,6 +21,11 @@ employeesRouter.get("/:id", ctl.getOne);
 employeesRouter.patch("/:id", validate(UpdateEmployeeBody), ctl.patchOne);
 employeesRouter.post("/:id/deactivate", requireRole("HR", "ADMIN"), ctl.postDeactivate);
 
+// PM sub-role: only Admin can promote/demote. The service rejects calls
+// against non-Employee targets (HR/Admin already have project-creation rights).
+employeesRouter.post("/:id/promote-pm", requireRole("ADMIN"), ctl.postPromotePM);
+employeesRouter.post("/:id/demote-pm", requireRole("ADMIN"), ctl.postDemotePM);
+
 employeesRouter.post("/:id/avatar", uploadAvatar, ctl.postAvatar);
 employeesRouter.delete("/:id/avatar", ctl.deleteAvatar);
 employeesRouter.post("/:id/resume", uploadResume, ctl.postResume);

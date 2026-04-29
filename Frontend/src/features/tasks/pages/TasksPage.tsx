@@ -100,7 +100,7 @@ export function TasksPage() {
                 </option>
               ))}
             </select>
-            <RoleGate roles={["PM", "HR", "ADMIN"]}>
+            <RoleGate requirePM>
               <Button size="sm" variant="outline" onClick={() => setShowCreateProject(true)}>
                 + New project
               </Button>

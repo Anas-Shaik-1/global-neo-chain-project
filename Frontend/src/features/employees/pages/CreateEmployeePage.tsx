@@ -12,7 +12,7 @@ export function CreateEmployeePage() {
   const depts = useDepartmentsList();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
-  const [role, setRole] = useState<"EMPLOYEE" | "HR" | "PM" | "ADMIN">("EMPLOYEE");
+  const [role, setRole] = useState<"EMPLOYEE" | "HR" | "ADMIN">("EMPLOYEE");
   const [jobTitle, setJobTitle] = useState("");
   const [departmentId, setDepartmentId] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +52,6 @@ export function CreateEmployeePage() {
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               >
                 <option value="EMPLOYEE">Employee</option>
-                <option value="PM">Project Manager</option>
                 <option value="HR">HR</option>
                 <option value="ADMIN">Admin</option>
               </select>
@@ -81,6 +80,10 @@ export function CreateEmployeePage() {
             </Button>
             <p className="text-sm text-muted-foreground">
               The temp password is logged on the backend (`info` level). Email invites are coming with sub-project #2.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              To grant Project Manager rights, create the user as Employee then promote
+              them from their detail page.
             </p>
           </form>
         </CardContent>

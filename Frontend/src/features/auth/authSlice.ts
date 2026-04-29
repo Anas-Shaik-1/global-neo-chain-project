@@ -1,12 +1,16 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 
-export type Role = "ADMIN" | "HR" | "EMPLOYEE" | "PM";
+export type Role = "ADMIN" | "HR" | "EMPLOYEE";
 
 export interface AuthUser {
   id: string;
   email: string;
   name: string;
   role: Role;
+  // PM is a sub-role flag (Admin can flip it on Employees). The backend always
+  // returns this field; older mocks and bootstrap responses without it are
+  // tolerated via Boolean() coercion at read sites.
+  isProjectManager: boolean;
   isVerified: boolean;
   // Auth-extensions: present on responses from a current backend; older payloads
   // (and existing tests) may omit these fields, so they're optional.

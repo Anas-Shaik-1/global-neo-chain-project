@@ -10,6 +10,7 @@ interface DemoUser {
   name: string;
   role: Role;
   jobTitle: string;
+  isProjectManager: boolean;
 }
 
 const DEMO_USERS: DemoUser[] = [
@@ -19,6 +20,7 @@ const DEMO_USERS: DemoUser[] = [
     name: "Admin",
     role: "ADMIN",
     jobTitle: "Platform Administrator",
+    isProjectManager: false,
   },
   {
     email: "hr@global-neochain.local",
@@ -26,13 +28,17 @@ const DEMO_USERS: DemoUser[] = [
     name: "Hannah Rivera",
     role: "HR",
     jobTitle: "Head of People",
+    isProjectManager: false,
   },
   {
     email: "pm@global-neochain.local",
     password: "ChangeMe-PM-1!",
     name: "Priya Mehta",
-    role: "PM",
+    // PM is no longer a primary role — it's an Employee with the
+    // isProjectManager sub-role flag flipped on by an Admin.
+    role: "EMPLOYEE" as Role,
     jobTitle: "Project Manager",
+    isProjectManager: true,
   },
   {
     email: "employee@global-neochain.local",
@@ -40,6 +46,7 @@ const DEMO_USERS: DemoUser[] = [
     name: "Eli Mwangi",
     role: "EMPLOYEE",
     jobTitle: "Software Engineer",
+    isProjectManager: false,
   },
 ];
 
@@ -56,6 +63,20 @@ async function main() {
     logger.info({ count: backfill.modifiedCount }, "backfilled isActive on legacy users");
   }
 
+  // Migrate legacy role="PM" docs left over from before the role-system
+  // refactor. Mongoose validation on read would otherwise reject them once we
+  // tightened ROLES to ["ADMIN", "HR", "EMPLOYEE"]. Idempotent.
+  const pmMigration = await User.updateMany(
+    { role: "PM" },
+    { $set: { role: "EMPLOYEE", isProjectManager: true } },
+  );
+  if (pmMigration.modifiedCount > 0) {
+    logger.info(
+      { count: pmMigration.modifiedCount },
+      "migrated legacy role=PM users to role=EMPLOYEE + isProjectManager=true",
+    );
+  }
+
   for (const u of DEMO_USERS) {
     const existing = await User.findOne({ email: u.email });
     if (existing) {
@@ -68,6 +89,7 @@ async function main() {
       passwordHash,
       name: u.name,
       role: u.role,
+      isProjectManager: u.isProjectManager,
       jobTitle: u.jobTitle,
       isVerified: true,
       isActive: true,
@@ -79,7 +101,8 @@ async function main() {
 
   logger.info("seed complete — demo credentials:");
   for (const u of DEMO_USERS) {
-    logger.info(`  ${u.role.padEnd(8)} ${u.email}  /  ${u.password}`);
+    const tag = u.isProjectManager ? `${u.role} · PM` : u.role;
+    logger.info(`  ${tag.padEnd(12)} ${u.email}  /  ${u.password}`);
   }
 
   await disconnectDb();

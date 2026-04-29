@@ -45,7 +45,7 @@ describe("ProtectedRoute", () => {
     store.dispatch(
       sessionEstablished({
         accessToken: "tk",
-        user: { id: "u1", email: "a@b.com", name: "A", role: "ADMIN", isVerified: true },
+        user: { id: "u1", email: "a@b.com", name: "A", role: "ADMIN", isProjectManager: false, isVerified: true },
       }),
     );
     render(
@@ -67,7 +67,7 @@ describe("ProtectedRoute", () => {
     store.dispatch(
       sessionEstablished({
         accessToken: "tk",
-        user: { id: "u1", email: "a@b.com", name: "A", role: "EMPLOYEE", isVerified: true },
+        user: { id: "u1", email: "a@b.com", name: "A", role: "EMPLOYEE", isProjectManager: false, isVerified: true },
       }),
     );
     render(
