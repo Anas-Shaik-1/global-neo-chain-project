@@ -7,6 +7,13 @@ export default defineConfig({
   resolve: {
     alias: { "@": resolve(__dirname, "src") },
   },
+  // simple-peer (used by the WebRTC calls module) is a Node-style library that
+  // expects `global` and `process` to exist. Browsers don't have those, so we
+  // shim them at build/dev time. Using `globalThis` is the safe modern shim.
+  define: {
+    global: "globalThis",
+    "process.env": {},
+  },
   server: {
     port: 5173,
   },
