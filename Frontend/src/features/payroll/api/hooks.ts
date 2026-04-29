@@ -1,7 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import axios from "axios";
+import { toast } from "sonner";
 import { getApi } from "@/api/axios";
 
 const api = () => getApi();
+
+function errorMessage(err: unknown, fallback: string): string {
+  if (axios.isAxiosError(err)) {
+    return (err.response?.data as { message?: string } | undefined)?.message ?? fallback;
+  }
+  return fallback;
+}
 
 export const BREAKDOWN_KINDS = ["EARNING", "DEDUCTION"] as const;
 export type BreakdownKind = (typeof BREAKDOWN_KINDS)[number];
@@ -101,7 +110,11 @@ export function useCreatePayslip() {
       const res = await api().post("/payroll", input);
       return res.data as Payslip;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: payrollKeys.all }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: payrollKeys.all });
+      toast.success("Payslip generated");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not generate payslip")),
   });
 }
 

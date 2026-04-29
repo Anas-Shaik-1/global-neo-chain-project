@@ -1,7 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import axios from "axios";
+import { toast } from "sonner";
 import { getApi } from "@/api/axios";
 
 const api = () => getApi();
+
+function errorMessage(err: unknown, fallback: string): string {
+  if (axios.isAxiosError(err)) {
+    return (err.response?.data as { message?: string } | undefined)?.message ?? fallback;
+  }
+  return fallback;
+}
 
 export interface CallParticipant {
   id: string;
@@ -53,7 +62,11 @@ export function useEndCall() {
       const res = await api().post(`/calls/${callId}/end`);
       return res.data as CallSession;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: callKeys.history }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: callKeys.history });
+      // No success toast — the UI already reflects the ended-call state.
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not end call")),
   });
 }
 

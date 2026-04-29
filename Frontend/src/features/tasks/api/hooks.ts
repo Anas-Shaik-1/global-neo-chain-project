@@ -1,7 +1,16 @@
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
+import axios from "axios";
+import { toast } from "sonner";
 import { getApi } from "@/api/axios";
 
 const api = () => getApi();
+
+function errorMessage(err: unknown, fallback: string): string {
+  if (axios.isAxiosError(err)) {
+    return (err.response?.data as { message?: string } | undefined)?.message ?? fallback;
+  }
+  return fallback;
+}
 
 export type TaskStatus = "TODO" | "IN_PROGRESS" | "DONE";
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
@@ -85,7 +94,11 @@ export function useCreateProject() {
       const res = await api().post("/projects", input);
       return res.data as Project;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: projectKeys.all }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: projectKeys.all });
+      toast.success("Project created");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not create project")),
   });
 }
 
@@ -136,7 +149,9 @@ export function useCreateTask() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: taskKeys.all });
       qc.invalidateQueries({ queryKey: projectKeys.all });
+      toast.success("Task created");
     },
+    onError: (err) => toast.error(errorMessage(err, "Could not create task")),
   });
 }
 
@@ -158,7 +173,9 @@ export function useUpdateTask(id: string) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: taskKeys.all });
+      toast.success("Task updated");
     },
+    onError: (err) => toast.error(errorMessage(err, "Could not update task")),
   });
 }
 
@@ -182,6 +199,8 @@ export function useAddComment(taskId: string) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: taskKeys.comments(taskId) });
+      toast.success("Comment added");
     },
+    onError: (err) => toast.error(errorMessage(err, "Could not add comment")),
   });
 }

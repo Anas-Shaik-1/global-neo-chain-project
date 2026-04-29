@@ -1,7 +1,16 @@
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
+import axios from "axios";
+import { toast } from "sonner";
 import { getApi } from "@/api/axios";
 
 const api = () => getApi();
+
+function errorMessage(err: unknown, fallback: string): string {
+  if (axios.isAxiosError(err)) {
+    return (err.response?.data as { message?: string } | undefined)?.message ?? fallback;
+  }
+  return fallback;
+}
 
 export const employeeKeys = {
   all: ["employees"] as const,
@@ -70,7 +79,9 @@ export function useUpdateEmployee(id: string) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: employeeKeys.all });
+      toast.success("Profile updated");
     },
+    onError: (err) => toast.error(errorMessage(err, "Could not update profile")),
   });
 }
 
@@ -85,7 +96,11 @@ export function useUploadAvatar(id: string) {
       });
       return res.data as { avatarUrl: string };
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: employeeKeys.detail(id) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: employeeKeys.detail(id) });
+      toast.success("Avatar updated");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not upload avatar")),
   });
 }
 
@@ -100,7 +115,11 @@ export function useUploadResume(id: string) {
       });
       return res.data as { resumeUrl: string };
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: employeeKeys.detail(id) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: employeeKeys.detail(id) });
+      toast.success("Resume updated");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not upload resume")),
   });
 }
 
@@ -111,7 +130,11 @@ export function useCreateEmployee() {
       const res = await api().post("/employees", input);
       return res.data as FullProfile;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: employeeKeys.all }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: employeeKeys.all });
+      toast.success("Employee created — temp password logged on backend");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not create employee")),
   });
 }
 
@@ -121,7 +144,11 @@ export function useDeactivateEmployee() {
     mutationFn: async (id: string) => {
       await api().post(`/employees/${id}/deactivate`);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: employeeKeys.all }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: employeeKeys.all });
+      toast.success("Employee deactivated");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not deactivate employee")),
   });
 }
 
@@ -154,6 +181,10 @@ export function useCreateDepartment() {
       const res = await api().post("/departments", input);
       return res.data as Department;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: departmentKeys.all }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: departmentKeys.all });
+      toast.success("Department created");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not create department")),
   });
 }

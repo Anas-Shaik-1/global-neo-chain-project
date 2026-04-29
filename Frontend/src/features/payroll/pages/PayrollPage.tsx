@@ -37,7 +37,11 @@ function MyPayslipsTab() {
       </CardHeader>
       <CardContent>
         {q.isLoading || !q.data ? (
-          <Skeleton className="h-32 w-full" />
+          <div className="space-y-3">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </div>
         ) : (
           <PayslipsTable
             payslips={q.data.items}
@@ -92,7 +96,11 @@ function AllPayslipsTab() {
       </CardHeader>
       <CardContent>
         {q.isLoading || !q.data ? (
-          <Skeleton className="h-32 w-full" />
+          <div className="space-y-3">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </div>
         ) : (
           <PayslipsTable
             payslips={q.data.items}

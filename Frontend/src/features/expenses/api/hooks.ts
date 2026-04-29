@@ -1,7 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import axios from "axios";
+import { toast } from "sonner";
 import { getApi } from "@/api/axios";
 
 const api = () => getApi();
+
+function errorMessage(err: unknown, fallback: string): string {
+  if (axios.isAxiosError(err)) {
+    return (err.response?.data as { message?: string } | undefined)?.message ?? fallback;
+  }
+  return fallback;
+}
 
 export const EXPENSE_CATEGORIES = [
   "TRAVEL",
@@ -107,7 +116,11 @@ export function useCreateExpense() {
       const res = await api().post("/expenses", input);
       return res.data as Expense;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: expenseKeys.all }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: expenseKeys.all });
+      toast.success("Expense submitted");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not submit expense")),
   });
 }
 
@@ -124,7 +137,11 @@ export function useDecideExpense() {
       const res = await api().post(`/expenses/${id}/decide`, { decision, note });
       return res.data as Expense;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: expenseKeys.all }),
+    onSuccess: (expense) => {
+      qc.invalidateQueries({ queryKey: expenseKeys.all });
+      toast.success(expense.status === "APPROVED" ? "Expense approved" : "Expense rejected");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not record decision")),
   });
 }
 
@@ -144,7 +161,11 @@ export function useUploadReceipt() {
       });
       return res.data as Expense;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: expenseKeys.all }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: expenseKeys.all });
+      toast.success("Receipt uploaded");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not upload receipt")),
   });
 }
 
@@ -155,6 +176,10 @@ export function useDeleteReceipt() {
       const res = await api().delete(`/expenses/${id}/receipt`);
       return res.data as Expense;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: expenseKeys.all }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: expenseKeys.all });
+      toast.success("Receipt removed");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not remove receipt")),
   });
 }

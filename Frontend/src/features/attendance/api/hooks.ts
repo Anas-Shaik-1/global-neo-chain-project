@@ -1,7 +1,16 @@
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
+import axios from "axios";
+import { toast } from "sonner";
 import { getApi } from "@/api/axios";
 
 const api = () => getApi();
+
+function errorMessage(err: unknown, fallback: string): string {
+  if (axios.isAxiosError(err)) {
+    return (err.response?.data as { message?: string } | undefined)?.message ?? fallback;
+  }
+  return fallback;
+}
 
 export const attendanceKeys = {
   all: ["attendance"] as const,
@@ -63,7 +72,11 @@ export function useClockIn() {
       const res = await api().post("/attendance/clock-in", input);
       return res.data as AttendanceEntry;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: attendanceKeys.all }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: attendanceKeys.all });
+      toast.success("Clocked in");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not clock in")),
   });
 }
 
@@ -74,6 +87,12 @@ export function useClockOut() {
       const res = await api().post("/attendance/clock-out", input);
       return res.data as AttendanceEntry;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: attendanceKeys.all }),
+    onSuccess: (entry) => {
+      qc.invalidateQueries({ queryKey: attendanceKeys.all });
+      const minutes = entry.durationMinutes ?? 0;
+      const hours = Math.round((minutes / 60) * 10) / 10;
+      toast.success(`Clocked out — ${hours}h worked`);
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not clock out")),
   });
 }

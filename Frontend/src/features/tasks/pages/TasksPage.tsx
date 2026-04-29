@@ -10,6 +10,21 @@ import { CreateTaskDialog } from "../components/CreateTaskDialog";
 import { TaskDetailDialog } from "../components/TaskDetailDialog";
 import { useProjects, useTasks, type Task, type TaskStatus } from "../api/hooks";
 
+function KanbanSkeleton() {
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      {Array.from({ length: 3 }).map((_, col) => (
+        <div key={col} className="space-y-3">
+          <Skeleton className="h-6 w-24" />
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-20 w-full" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function TasksPage() {
   const projectsQ = useProjects({ limit: 100 });
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
@@ -85,13 +100,13 @@ export function TasksPage() {
       <Card>
         <CardContent className="pt-6">
           {projectsQ.isLoading ? (
-            <Skeleton className="h-64 w-full" />
+            <KanbanSkeleton />
           ) : !hasProjects ? (
             <div className="rounded-md border border-dashed border-border px-4 py-12 text-center text-sm text-muted-foreground">
               No projects yet. Create your first project to get started.
             </div>
           ) : tasksQ.isLoading || !tasksQ.data ? (
-            <Skeleton className="h-64 w-full" />
+            <KanbanSkeleton />
           ) : (
             <KanbanBoard
               tasks={tasksQ.data}

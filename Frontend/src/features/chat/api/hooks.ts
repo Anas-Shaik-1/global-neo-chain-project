@@ -1,7 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import axios from "axios";
+import { toast } from "sonner";
 import { getApi } from "@/api/axios";
 
 const api = () => getApi();
+
+function errorMessage(err: unknown, fallback: string): string {
+  if (axios.isAxiosError(err)) {
+    return (err.response?.data as { message?: string } | undefined)?.message ?? fallback;
+  }
+  return fallback;
+}
 
 export interface ChatParticipant {
   id: string;
@@ -50,7 +59,11 @@ export function useOpenConversation() {
       const res = await api().post("/chat/conversations", { otherUserId });
       return res.data as Conversation;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: chatKeys.conversations }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: chatKeys.conversations });
+      toast.success("Conversation opened");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not open conversation")),
   });
 }
 
@@ -96,6 +109,8 @@ export function useSendMessage() {
       qc.invalidateQueries({
         queryKey: ["chat", "messages", vars.conversationId],
       });
+      // Intentionally no success toast — would be too noisy on every send.
     },
+    onError: (err) => toast.error(errorMessage(err, "Could not send message")),
   });
 }

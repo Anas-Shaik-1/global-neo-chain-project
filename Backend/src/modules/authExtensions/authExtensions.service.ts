@@ -6,6 +6,7 @@ import { User } from "../../models/user.model.js";
 import { PasswordResetToken } from "../../models/passwordResetToken.model.js";
 import { config } from "../../config/index.js";
 import { logger } from "../../lib/logger.js";
+import { getMailDriver } from "../../lib/mail.js";
 import {
   loginCheckCredentials,
   issueTokensFor,
@@ -36,9 +37,11 @@ async function totpIsValid(token: string, secret: string): Promise<boolean> {
  * Request a password reset email. Always returns silently (we never reveal
  * whether the email is known) to avoid account-enumeration leaks.
  *
- * NOTE: Email delivery is NOT implemented — the reset link is logged to the
- * server console at INFO level. Production deployments must wire a real email
- * provider (SES, Postmark, Resend, etc.) before this feature is usable.
+ * Email delivery is dispatched through the pluggable {@link MailDriver}
+ * interface — by default the {@link ConsoleMailDriver} prints the message to
+ * the structured logger so devs can grab the reset link locally. To enable
+ * real delivery, implement {@link MailDriver} for your provider (SES,
+ * Postmark, Resend, SendGrid, …) and call {@link setMailDriver} at boot.
  */
 export async function requestPasswordReset(email: string): Promise<void> {
   const user = await User.findOne({ email: email.toLowerCase() });
@@ -59,10 +62,27 @@ export async function requestPasswordReset(email: string): Promise<void> {
   });
 
   const resetUrl = `${config.FRONTEND_ORIGIN}/reset-password?token=${rawToken}`;
-  // CONSOLE-ONLY EMAIL DELIVERY (MVP). Replace with real provider in production.
+  const subject = "Reset your Global NeoChain password";
+  const text =
+    `Hi ${user.name},\n\n` +
+    `We received a request to reset the password for your Global NeoChain account.\n` +
+    `Open the link below to choose a new password:\n\n` +
+    `${resetUrl}\n\n` +
+    `This link expires in 1 hour. If you didn't request this, you can safely ignore this email.`;
+  const html =
+    `<p>Hi ${user.name},</p>` +
+    `<p>We received a request to reset the password for your Global NeoChain account. ` +
+    `Click the link below to choose a new password:</p>` +
+    `<p><a href="${resetUrl}">${resetUrl}</a></p>` +
+    `<p>This link <strong>expires in 1 hour</strong>. If you didn't request this, you can safely ignore this email.</p>`;
+
+  await getMailDriver().send({ to: user.email, subject, text, html });
+
+  // Keep a structured trace for ops & test interception (the existing tests
+  // rely on capturing `resetUrl` from this log line).
   logger.info(
     { userId: user._id.toString(), email: user.email, resetUrl, expiresAt },
-    "[email-stub] password reset link",
+    "password reset link dispatched via MailDriver",
   );
 }
 

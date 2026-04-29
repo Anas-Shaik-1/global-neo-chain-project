@@ -87,13 +87,13 @@ export default function App() {
     <Provider store={store}>
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
+          <Toaster richColors position="top-right" theme="dark" closeButton />
           <BrowserRouter>
             <CallProvider>
               <Routed />
               <IncomingCallDialog />
               <CallView />
             </CallProvider>
-            <Toaster position="top-right" richColors closeButton />
           </BrowserRouter>
         </QueryClientProvider>
       </ThemeProvider>
