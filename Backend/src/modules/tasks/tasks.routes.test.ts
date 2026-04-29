@@ -134,4 +134,58 @@ describe("/projects + /tasks", () => {
     expect(res.body.body).toBe("looks good");
     expect(res.body.authorName).toBe("pm@b.com");
   });
+
+  it("GET /tasks/:id/activity returns 200 with at least the CREATED entry", async () => {
+    const pm = await seedAndToken("PM", "pm@b.com");
+    const app = await buildApp();
+    const proj = await request(app)
+      .post("/projects")
+      .set("Authorization", `Bearer ${pm.token}`)
+      .send({ name: "Atlas", key: "atlas" });
+    const created = await request(app)
+      .post("/tasks")
+      .set("Authorization", `Bearer ${pm.token}`)
+      .send({ projectId: proj.body.id, title: "Track me" });
+    const res = await request(app)
+      .get(`/tasks/${created.body.id}/activity`)
+      .set("Authorization", `Bearer ${pm.token}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.length).toBeGreaterThanOrEqual(1);
+    expect(res.body.some((a: { kind: string }) => a.kind === "CREATED")).toBe(true);
+  });
+
+  it("GET /tasks/:id/subtasks returns sub-tasks only", async () => {
+    const pm = await seedAndToken("PM", "pm@b.com");
+    const app = await buildApp();
+    const proj = await request(app)
+      .post("/projects")
+      .set("Authorization", `Bearer ${pm.token}`)
+      .send({ name: "Atlas", key: "atlas" });
+    const parent = await request(app)
+      .post("/tasks")
+      .set("Authorization", `Bearer ${pm.token}`)
+      .send({ projectId: proj.body.id, title: "Parent" });
+    await request(app)
+      .post("/tasks")
+      .set("Authorization", `Bearer ${pm.token}`)
+      .send({ projectId: proj.body.id, title: "Sub A", parentTaskId: parent.body.id });
+    await request(app)
+      .post("/tasks")
+      .set("Authorization", `Bearer ${pm.token}`)
+      .send({ projectId: proj.body.id, title: "Sub B", parentTaskId: parent.body.id });
+    // Unrelated top-level task
+    await request(app)
+      .post("/tasks")
+      .set("Authorization", `Bearer ${pm.token}`)
+      .send({ projectId: proj.body.id, title: "Other" });
+    const res = await request(app)
+      .get(`/tasks/${parent.body.id}/subtasks`)
+      .set("Authorization", `Bearer ${pm.token}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.length).toBe(2);
+    const titles = res.body.map((t: { title: string }) => t.title).sort();
+    expect(titles).toEqual(["Sub A", "Sub B"]);
+  });
 });

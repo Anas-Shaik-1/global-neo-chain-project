@@ -7,6 +7,11 @@ import {
   type TaskPriority,
 } from "../../models/task.model.js";
 import { TaskComment, type TaskCommentDoc } from "../../models/taskComment.model.js";
+import {
+  TaskActivity,
+  type TaskActivityDoc,
+  type TaskActivityKind,
+} from "../../models/taskActivity.model.js";
 import { User } from "../../models/user.model.js";
 import { ConflictError, NotFoundError } from "../../lib/errors.js";
 
@@ -34,6 +39,8 @@ export interface TaskResponseShape {
   createdById: string;
   createdByName: string | null;
   dueDate: Date | null;
+  parentTaskId: string | null;
+  subtaskCount: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -44,6 +51,18 @@ export interface CommentResponseShape {
   authorId: string;
   authorName: string | null;
   body: string;
+  createdAt: Date;
+}
+
+export interface TaskActivityResponseShape {
+  id: string;
+  taskId: string;
+  actorId: string;
+  actorName: string | null;
+  kind: TaskActivityKind;
+  fromValue: string | null;
+  toValue: string | null;
+  summary: string | null;
   createdAt: Date;
 }
 
@@ -63,6 +82,7 @@ function toProjectShape(p: ProjectDoc, taskCount: number): ProjectResponseShape 
 interface DenormContext {
   userNames: Map<string, string>;
   projectInfo: Map<string, { key: string; name: string }>;
+  subtaskCounts: Map<string, number>;
 }
 
 function denormalizeTask(t: TaskDoc, ctx: DenormContext): TaskResponseShape {
@@ -83,6 +103,8 @@ function denormalizeTask(t: TaskDoc, ctx: DenormContext): TaskResponseShape {
     createdById: t.createdById.toString(),
     createdByName: ctx.userNames.get(t.createdById.toString()) ?? null,
     dueDate: t.dueDate ?? null,
+    parentTaskId: t.parentTaskId ? t.parentTaskId.toString() : null,
+    subtaskCount: ctx.subtaskCounts.get(t._id.toString()) ?? 0,
     createdAt: ts.createdAt,
     updatedAt: ts.updatedAt,
   };
@@ -97,6 +119,24 @@ function denormalizeComment(c: TaskCommentDoc, userNames: Map<string, string>): 
     authorName: userNames.get(c.authorId.toString()) ?? null,
     body: c.body,
     createdAt: cs.createdAt,
+  };
+}
+
+function denormalizeActivity(
+  a: TaskActivityDoc,
+  userNames: Map<string, string>,
+): TaskActivityResponseShape {
+  const as_ = a as unknown as { createdAt: Date };
+  return {
+    id: a._id.toString(),
+    taskId: a.taskId.toString(),
+    actorId: a.actorId.toString(),
+    actorName: userNames.get(a.actorId.toString()) ?? null,
+    kind: a.kind as TaskActivityKind,
+    fromValue: a.fromValue ?? null,
+    toValue: a.toValue ?? null,
+    summary: a.summary ?? null,
+    createdAt: as_.createdAt,
   };
 }
 
@@ -118,6 +158,42 @@ async function buildProjectInfoMap(projectIds: Types.ObjectId[]): Promise<Map<st
   const projects = await Project.find({ _id: { $in: ids } }).select("name key").lean();
   for (const p of projects) map.set(p._id.toString(), { key: p.key, name: p.name });
   return map;
+}
+
+async function buildSubtaskCountsMap(taskIds: Types.ObjectId[]): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  if (taskIds.length === 0) return map;
+  const counts = await Task.aggregate<{ _id: Types.ObjectId; count: number }>([
+    { $match: { parentTaskId: { $in: taskIds } } },
+    { $group: { _id: "$parentTaskId", count: { $sum: 1 } } },
+  ]);
+  for (const c of counts) map.set(c._id.toString(), c.count);
+  return map;
+}
+
+async function logActivity(input: {
+  taskId: Types.ObjectId | string;
+  actorId: Types.ObjectId | string;
+  kind: TaskActivityKind;
+  fromValue?: string | null;
+  toValue?: string | null;
+  summary?: string | null;
+}): Promise<void> {
+  await TaskActivity.create({
+    taskId:
+      typeof input.taskId === "string" ? new Types.ObjectId(input.taskId) : input.taskId,
+    actorId:
+      typeof input.actorId === "string" ? new Types.ObjectId(input.actorId) : input.actorId,
+    kind: input.kind,
+    fromValue: input.fromValue ?? null,
+    toValue: input.toValue ?? null,
+    summary: input.summary ?? null,
+  });
+}
+
+function truncate(s: string | null | undefined, max = 100): string | null {
+  if (s == null) return null;
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
 
 export interface ListProjectsInput {
@@ -178,7 +254,10 @@ export interface ListTasksFilters {
 }
 
 export async function listTasks(projectId: string, filters: ListTasksFilters): Promise<TaskResponseShape[]> {
-  const filter: Record<string, unknown> = { projectId: new Types.ObjectId(projectId) };
+  const filter: Record<string, unknown> = {
+    projectId: new Types.ObjectId(projectId),
+    parentTaskId: null,
+  };
   if (filters.status) filter.status = filters.status;
   if (filters.priority) filter.priority = filters.priority;
   if (filters.assigneeId) filter.assigneeId = new Types.ObjectId(filters.assigneeId);
@@ -186,7 +265,8 @@ export async function listTasks(projectId: string, filters: ListTasksFilters): P
   const userIds = tasks.flatMap((t) => [t.assigneeId, t.createdById]);
   const userNames = await buildUserNamesMap(userIds);
   const projectInfo = await buildProjectInfoMap(tasks.map((t) => t.projectId));
-  return tasks.map((t) => denormalizeTask(t, { userNames, projectInfo }));
+  const subtaskCounts = await buildSubtaskCountsMap(tasks.map((t) => t._id));
+  return tasks.map((t) => denormalizeTask(t, { userNames, projectInfo, subtaskCounts }));
 }
 
 export interface CreateTaskInput {
@@ -196,11 +276,18 @@ export interface CreateTaskInput {
   priority?: TaskPriority;
   assigneeId?: string | null;
   dueDate?: Date | null;
+  parentTaskId?: string | null;
 }
 
 export async function createTask(input: CreateTaskInput, createdById: string): Promise<TaskResponseShape> {
   const project = await Project.findById(input.projectId);
   if (!project) throw new NotFoundError("Project");
+  let parentTaskId: Types.ObjectId | null = null;
+  if (input.parentTaskId) {
+    const parent = await Task.findById(input.parentTaskId);
+    if (!parent) throw new NotFoundError("Parent task");
+    parentTaskId = parent._id;
+  }
   const created = await Task.create({
     projectId: new Types.ObjectId(input.projectId),
     title: input.title,
@@ -209,12 +296,21 @@ export async function createTask(input: CreateTaskInput, createdById: string): P
     assigneeId: input.assigneeId ? new Types.ObjectId(input.assigneeId) : null,
     createdById: new Types.ObjectId(createdById),
     dueDate: input.dueDate ?? null,
+    parentTaskId,
+  });
+  await logActivity({
+    taskId: created._id,
+    actorId: createdById,
+    kind: "CREATED",
+    toValue: created.title,
+    summary: "created the task",
   });
   const userNames = await buildUserNamesMap([created.assigneeId, created.createdById]);
   const projectInfo = new Map<string, { key: string; name: string }>([
     [project._id.toString(), { key: project.key, name: project.name }],
   ]);
-  return denormalizeTask(created, { userNames, projectInfo });
+  const subtaskCounts = new Map<string, number>();
+  return denormalizeTask(created, { userNames, projectInfo, subtaskCounts });
 }
 
 export async function getTask(id: string): Promise<TaskResponseShape> {
@@ -222,7 +318,8 @@ export async function getTask(id: string): Promise<TaskResponseShape> {
   if (!t) throw new NotFoundError("Task");
   const userNames = await buildUserNamesMap([t.assigneeId, t.createdById]);
   const projectInfo = await buildProjectInfoMap([t.projectId]);
-  return denormalizeTask(t, { userNames, projectInfo });
+  const subtaskCounts = await buildSubtaskCountsMap([t._id]);
+  return denormalizeTask(t, { userNames, projectInfo, subtaskCounts });
 }
 
 export interface UpdateTaskInput {
@@ -234,7 +331,14 @@ export interface UpdateTaskInput {
   dueDate?: Date | null;
 }
 
-export async function updateTask(id: string, patch: UpdateTaskInput): Promise<TaskResponseShape> {
+export async function updateTask(
+  id: string,
+  patch: UpdateTaskInput,
+  actorId?: string,
+): Promise<TaskResponseShape> {
+  const before = await Task.findById(id);
+  if (!before) throw new NotFoundError("Task");
+
   const update: Record<string, unknown> = {};
   if (patch.title !== undefined) update.title = patch.title;
   if (patch.description !== undefined) update.description = patch.description;
@@ -244,11 +348,74 @@ export async function updateTask(id: string, patch: UpdateTaskInput): Promise<Ta
     update.assigneeId = patch.assigneeId ? new Types.ObjectId(patch.assigneeId) : null;
   }
   if (patch.dueDate !== undefined) update.dueDate = patch.dueDate;
+
   const t = await Task.findByIdAndUpdate(id, update, { new: true, runValidators: true });
   if (!t) throw new NotFoundError("Task");
+
+  if (actorId) {
+    if (patch.status !== undefined && patch.status !== before.status) {
+      await logActivity({
+        taskId: t._id,
+        actorId,
+        kind: "STATUS_CHANGED",
+        fromValue: before.status,
+        toValue: patch.status,
+      });
+    }
+    if (patch.priority !== undefined && patch.priority !== before.priority) {
+      await logActivity({
+        taskId: t._id,
+        actorId,
+        kind: "PRIORITY_CHANGED",
+        fromValue: before.priority,
+        toValue: patch.priority,
+      });
+    }
+    if (patch.title !== undefined && patch.title !== before.title) {
+      await logActivity({
+        taskId: t._id,
+        actorId,
+        kind: "TITLE_CHANGED",
+        fromValue: truncate(before.title),
+        toValue: truncate(patch.title),
+      });
+    }
+    if (patch.assigneeId !== undefined) {
+      const oldId = before.assigneeId ? before.assigneeId.toString() : null;
+      const newId = patch.assigneeId ?? null;
+      if (oldId !== newId) {
+        const lookupIds: Types.ObjectId[] = [];
+        if (before.assigneeId) lookupIds.push(before.assigneeId);
+        if (newId) lookupIds.push(new Types.ObjectId(newId));
+        const names = await buildUserNamesMap(lookupIds);
+        await logActivity({
+          taskId: t._id,
+          actorId,
+          kind: "ASSIGNED",
+          fromValue: oldId ? names.get(oldId) ?? "unassigned" : "unassigned",
+          toValue: newId ? names.get(newId) ?? "unassigned" : "unassigned",
+        });
+      }
+    }
+    if (patch.dueDate !== undefined) {
+      const oldD = before.dueDate ? before.dueDate.toISOString() : null;
+      const newD = patch.dueDate ? new Date(patch.dueDate).toISOString() : null;
+      if (oldD !== newD) {
+        await logActivity({
+          taskId: t._id,
+          actorId,
+          kind: "DUE_DATE_CHANGED",
+          fromValue: oldD,
+          toValue: newD,
+        });
+      }
+    }
+  }
+
   const userNames = await buildUserNamesMap([t.assigneeId, t.createdById]);
   const projectInfo = await buildProjectInfoMap([t.projectId]);
-  return denormalizeTask(t, { userNames, projectInfo });
+  const subtaskCounts = await buildSubtaskCountsMap([t._id]);
+  return denormalizeTask(t, { userNames, projectInfo, subtaskCounts });
 }
 
 export async function listComments(taskId: string): Promise<CommentResponseShape[]> {
@@ -265,6 +432,35 @@ export async function addComment(taskId: string, authorId: string, body: string)
     authorId: new Types.ObjectId(authorId),
     body,
   });
+  await logActivity({
+    taskId: task._id,
+    actorId: authorId,
+    kind: "COMMENTED",
+    summary: body.slice(0, 100),
+  });
   const userNames = await buildUserNamesMap([created.authorId]);
   return denormalizeComment(created, userNames);
+}
+
+export async function listActivity(taskId: string): Promise<TaskActivityResponseShape[]> {
+  const task = await Task.findById(taskId);
+  if (!task) throw new NotFoundError("Task");
+  const items = await TaskActivity.find({ taskId: new Types.ObjectId(taskId) }).sort({
+    createdAt: -1,
+  });
+  const userNames = await buildUserNamesMap(items.map((i) => i.actorId));
+  return items.map((i) => denormalizeActivity(i, userNames));
+}
+
+export async function listSubtasks(parentTaskId: string): Promise<TaskResponseShape[]> {
+  const parent = await Task.findById(parentTaskId);
+  if (!parent) throw new NotFoundError("Task");
+  const tasks = await Task.find({ parentTaskId: new Types.ObjectId(parentTaskId) }).sort({
+    createdAt: 1,
+  });
+  const userIds = tasks.flatMap((t) => [t.assigneeId, t.createdById]);
+  const userNames = await buildUserNamesMap(userIds);
+  const projectInfo = await buildProjectInfoMap(tasks.map((t) => t.projectId));
+  const subtaskCounts = await buildSubtaskCountsMap(tasks.map((t) => t._id));
+  return tasks.map((t) => denormalizeTask(t, { userNames, projectInfo, subtaskCounts }));
 }

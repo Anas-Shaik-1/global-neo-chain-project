@@ -39,8 +39,31 @@ export interface Task {
   createdById: string;
   createdByName?: string | null;
   dueDate?: string | null;
+  parentTaskId?: string | null;
+  subtaskCount: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export type TaskActivityKind =
+  | "CREATED"
+  | "STATUS_CHANGED"
+  | "ASSIGNED"
+  | "PRIORITY_CHANGED"
+  | "DUE_DATE_CHANGED"
+  | "TITLE_CHANGED"
+  | "COMMENTED";
+
+export interface TaskActivity {
+  id: string;
+  taskId: string;
+  actorId: string;
+  actorName?: string | null;
+  kind: TaskActivityKind;
+  fromValue?: string | null;
+  toValue?: string | null;
+  summary?: string | null;
+  createdAt: string;
 }
 
 export interface Comment {
@@ -64,6 +87,8 @@ export const taskKeys = {
     ["tasks", "by-project", projectId, filters] as const,
   detail: (id: string) => ["tasks", "detail", id] as const,
   comments: (taskId: string) => ["tasks", "comments", taskId] as const,
+  activity: (taskId: string) => ["tasks", "activity", taskId] as const,
+  subtasks: (taskId: string) => ["tasks", "subtasks", taskId] as const,
 };
 
 export function useProjects(params: { page?: number; limit?: number } = {}) {
@@ -137,6 +162,7 @@ export interface CreateTaskInput {
   priority?: TaskPriority;
   assigneeId?: string | null;
   dueDate?: string | null;
+  parentTaskId?: string | null;
 }
 
 export function useCreateTask() {
@@ -173,6 +199,7 @@ export function useUpdateTask(id: string) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: taskKeys.all });
+      if (id) qc.invalidateQueries({ queryKey: taskKeys.activity(id) });
       toast.success("Task updated");
     },
     onError: (err) => toast.error(errorMessage(err, "Could not update task")),
@@ -199,8 +226,31 @@ export function useAddComment(taskId: string) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: taskKeys.comments(taskId) });
+      qc.invalidateQueries({ queryKey: taskKeys.activity(taskId) });
       toast.success("Comment added");
     },
     onError: (err) => toast.error(errorMessage(err, "Could not add comment")),
+  });
+}
+
+export function useTaskActivity(taskId: string | undefined) {
+  return useQuery({
+    queryKey: taskKeys.activity(taskId ?? ""),
+    enabled: !!taskId,
+    queryFn: async () => {
+      const res = await api().get(`/tasks/${taskId}/activity`);
+      return res.data as TaskActivity[];
+    },
+  });
+}
+
+export function useSubtasks(taskId: string | undefined) {
+  return useQuery({
+    queryKey: taskKeys.subtasks(taskId ?? ""),
+    enabled: !!taskId,
+    queryFn: async () => {
+      const res = await api().get(`/tasks/${taskId}/subtasks`);
+      return res.data as Task[];
+    },
   });
 }

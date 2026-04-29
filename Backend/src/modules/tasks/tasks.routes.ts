@@ -31,3 +31,5 @@ tasksRouter.get("/:id", ctl.getTaskOne);
 tasksRouter.patch("/:id", validate(UpdateTaskBody), ctl.patchTask);
 tasksRouter.get("/:id/comments", ctl.getTaskComments);
 tasksRouter.post("/:id/comments", validate(CreateCommentBody), ctl.postTaskComment);
+tasksRouter.get("/:id/activity", ctl.getTaskActivity);
+tasksRouter.get("/:id/subtasks", ctl.getTaskSubtasks);

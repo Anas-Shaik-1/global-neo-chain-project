@@ -86,4 +86,62 @@ describe("tasks.service", () => {
     expect(c.authorName).toBe("alice@b.com");
     expect(c.authorId).toBe(u._id.toString());
   });
+
+  it("createTask with parentTaskId creates a subtask", async () => {
+    const { createProject, createTask } = await import("./tasks.service.js");
+    const u = await makeUser("u@b.com");
+    const p = await createProject({ name: "Atlas", key: "atlas" });
+    const parent = await createTask({ projectId: p.id, title: "Parent" }, u._id.toString());
+    const child = await createTask(
+      { projectId: p.id, title: "Child", parentTaskId: parent.id },
+      u._id.toString(),
+    );
+    expect(child.parentTaskId).toBe(parent.id);
+  });
+
+  it("updateTask logs STATUS_CHANGED activity", async () => {
+    const { createProject, createTask, updateTask, listActivity } = await import("./tasks.service.js");
+    const u = await makeUser("u@b.com");
+    const p = await createProject({ name: "Atlas", key: "atlas" });
+    const t = await createTask({ projectId: p.id, title: "Task" }, u._id.toString());
+    await updateTask(t.id, { status: "IN_PROGRESS" }, u._id.toString());
+    const activity = await listActivity(t.id);
+    const status = activity.find((a) => a.kind === "STATUS_CHANGED");
+    expect(status).toBeDefined();
+    expect(status!.fromValue).toBe("TODO");
+    expect(status!.toValue).toBe("IN_PROGRESS");
+  });
+
+  it("addComment logs COMMENTED activity", async () => {
+    const { createProject, createTask, addComment, listActivity } = await import("./tasks.service.js");
+    const u = await makeUser("u@b.com");
+    const p = await createProject({ name: "Atlas", key: "atlas" });
+    const t = await createTask({ projectId: p.id, title: "Task" }, u._id.toString());
+    await addComment(t.id, u._id.toString(), "Hi there");
+    const activity = await listActivity(t.id);
+    const commented = activity.find((a) => a.kind === "COMMENTED");
+    expect(commented).toBeDefined();
+    expect(commented!.summary).toBe("Hi there");
+  });
+
+  it("listSubtasks returns only direct children", async () => {
+    const { createProject, createTask, listSubtasks } = await import("./tasks.service.js");
+    const u = await makeUser("u@b.com");
+    const p = await createProject({ name: "Atlas", key: "atlas" });
+    const parent = await createTask({ projectId: p.id, title: "Parent" }, u._id.toString());
+    const sub1 = await createTask(
+      { projectId: p.id, title: "S1", parentTaskId: parent.id },
+      u._id.toString(),
+    );
+    const sub2 = await createTask(
+      { projectId: p.id, title: "S2", parentTaskId: parent.id },
+      u._id.toString(),
+    );
+    // unrelated other top-level task
+    await createTask({ projectId: p.id, title: "Other" }, u._id.toString());
+    const subs = await listSubtasks(parent.id);
+    expect(subs.length).toBe(2);
+    const ids = subs.map((s) => s.id).sort();
+    expect(ids).toEqual([sub1.id, sub2.id].sort());
+  });
 });

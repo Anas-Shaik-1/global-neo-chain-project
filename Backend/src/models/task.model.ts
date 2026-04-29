@@ -40,6 +40,12 @@ const taskSchema = new Schema(
       required: true,
     },
     dueDate: { type: Date, default: null },
+    parentTaskId: {
+      type: Schema.Types.ObjectId,
+      ref: "Task",
+      default: null,
+      index: true,
+    },
   },
   { timestamps: true },
 );

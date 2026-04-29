@@ -1,14 +1,18 @@
 import { useEffect, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import axios from "axios";
+import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/common/PageHeader";
 import { RoleGate } from "@/features/auth/RoleGate";
+import { getApi } from "@/api/axios";
 import { KanbanBoard } from "../components/KanbanBoard";
 import { CreateProjectDialog } from "../components/CreateProjectDialog";
 import { CreateTaskDialog } from "../components/CreateTaskDialog";
 import { TaskDetailDialog } from "../components/TaskDetailDialog";
-import { useProjects, useTasks, type Task, type TaskStatus } from "../api/hooks";
+import { useProjects, useTasks, taskKeys, type Task, type TaskStatus } from "../api/hooks";
 
 function KanbanSkeleton() {
   return (
@@ -26,9 +30,27 @@ function KanbanSkeleton() {
 }
 
 export function TasksPage() {
+  const qc = useQueryClient();
   const projectsQ = useProjects({ limit: 100 });
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const tasksQ = useTasks(selectedProjectId || undefined);
+
+  const moveTask = useMutation({
+    mutationFn: async (input: { taskId: string; status: TaskStatus }) => {
+      const res = await getApi().patch(`/tasks/${input.taskId}`, { status: input.status });
+      return res.data as Task;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: taskKeys.all });
+    },
+    onError: (err) => {
+      const fallback = "Could not move task";
+      const msg = axios.isAxiosError(err)
+        ? (err.response?.data as { message?: string } | undefined)?.message ?? fallback
+        : fallback;
+      toast.error(msg);
+    },
+  });
 
   const [showCreateProject, setShowCreateProject] = useState(false);
   const [showCreateTask, setShowCreateTask] = useState(false);
@@ -112,6 +134,7 @@ export function TasksPage() {
               tasks={tasksQ.data}
               onCardClick={(t) => setActiveTask(t)}
               onColumnAdd={onColumnAdd}
+              onTaskMove={(taskId, status) => moveTask.mutate({ taskId, status })}
             />
           )}
         </CardContent>

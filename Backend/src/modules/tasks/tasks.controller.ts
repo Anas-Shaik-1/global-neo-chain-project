@@ -83,8 +83,9 @@ export async function getTaskOne(req: Request, res: Response, next: NextFunction
 
 export async function patchTask(req: Request, res: Response, next: NextFunction) {
   try {
+    const me = requireUser(req);
     const id = req.params.id as string;
-    const task = await svc.updateTask(id, req.validated as svc.UpdateTaskInput);
+    const task = await svc.updateTask(id, req.validated as svc.UpdateTaskInput, me.id);
     res.json(task);
   } catch (err) {
     next(err);
@@ -108,6 +109,26 @@ export async function postTaskComment(req: Request, res: Response, next: NextFun
     const body = (req.validated as { body: string }).body;
     const comment = await svc.addComment(id, me.id, body);
     res.status(201).json(comment);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getTaskActivity(req: Request, res: Response, next: NextFunction) {
+  try {
+    const id = req.params.id as string;
+    const activity = await svc.listActivity(id);
+    res.json(activity);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getTaskSubtasks(req: Request, res: Response, next: NextFunction) {
+  try {
+    const id = req.params.id as string;
+    const subtasks = await svc.listSubtasks(id);
+    res.json(subtasks);
   } catch (err) {
     next(err);
   }

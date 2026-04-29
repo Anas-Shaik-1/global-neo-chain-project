@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { registry } from "../../openapi/registry.js";
 import { TASK_STATUSES, TASK_PRIORITIES } from "../../models/task.model.js";
+import { TASK_ACTIVITY_KINDS } from "../../models/taskActivity.model.js";
 
 const objectIdString = z
   .string()
@@ -42,10 +43,28 @@ export const TaskResponse = z
     createdById: z.string(),
     createdByName: z.string().nullable().optional(),
     dueDate: z.string().datetime().nullable().optional(),
+    parentTaskId: z.string().nullable().optional(),
+    subtaskCount: z.number().int().nonnegative(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
   .openapi("Task");
+
+export const ActivityKindEnum = z.enum(TASK_ACTIVITY_KINDS).openapi("TaskActivityKind");
+
+export const TaskActivityResponse = z
+  .object({
+    id: z.string(),
+    taskId: z.string(),
+    actorId: z.string(),
+    actorName: z.string().nullable().optional(),
+    kind: ActivityKindEnum,
+    fromValue: z.string().nullable().optional(),
+    toValue: z.string().nullable().optional(),
+    summary: z.string().nullable().optional(),
+    createdAt: z.string().datetime(),
+  })
+  .openapi("TaskActivity");
 
 export const CommentResponse = z
   .object({
@@ -74,6 +93,7 @@ export const CreateTaskBody = z
     priority: z.enum(TASK_PRIORITIES).optional(),
     assigneeId: objectIdString.nullable().optional(),
     dueDate: z.coerce.date().nullable().optional(),
+    parentTaskId: objectIdString.nullable().optional(),
   })
   .openapi("CreateTaskBody");
 
@@ -212,6 +232,30 @@ registry.registerPath({
   },
   responses: {
     201: { description: "Created", ...json(CommentResponse) },
+    404: { description: "Task not found", ...json(ErrorRef) },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/tasks/{id}/activity",
+  tags: ["tasks"],
+  security: sec,
+  request: { params: z.object({ id: objectIdString }) },
+  responses: {
+    200: { description: "OK", ...json(z.array(TaskActivityResponse)) },
+    404: { description: "Task not found", ...json(ErrorRef) },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/tasks/{id}/subtasks",
+  tags: ["tasks"],
+  security: sec,
+  request: { params: z.object({ id: objectIdString }) },
+  responses: {
+    200: { description: "OK", ...json(z.array(TaskResponse)) },
     404: { description: "Task not found", ...json(ErrorRef) },
   },
 });
