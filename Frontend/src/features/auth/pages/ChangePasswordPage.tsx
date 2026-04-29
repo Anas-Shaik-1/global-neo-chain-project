@@ -1,15 +1,25 @@
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { getApi } from "@/api/axios";
 import { useAppDispatch, useAppSelector } from "@/app/hooks";
 import { sessionEstablished } from "@/features/auth/authSlice";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/common/PageHeader";
+import { ChangePasswordSchema, type ChangePasswordValues } from "../schemas";
 
 export function ChangePasswordPage() {
   const navigate = useNavigate();
@@ -17,28 +27,22 @@ export function ChangePasswordPage() {
   const auth = useAppSelector((s) => s.auth);
   const user = auth.user;
   const accessToken = auth.accessToken;
-  const [current, setCurrent] = useState("");
-  const [next, setNext] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const form = useForm<ChangePasswordValues>({
+    resolver: zodResolver(ChangePasswordSchema),
+    defaultValues: { currentPassword: "", newPassword: "", confirm: "" },
+  });
 
   if (!user) return null;
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
+  async function onSubmit(values: ChangePasswordValues) {
     setError(null);
-    if (next !== confirm) {
-      setError("New passwords do not match.");
-      return;
-    }
-    if (next.length < 8) {
-      setError("New password must be at least 8 characters.");
-      return;
-    }
-    setSubmitting(true);
     try {
-      await getApi().post("/auth/password/change", { currentPassword: current, newPassword: next });
+      await getApi().post("/auth/password/change", {
+        currentPassword: values.currentPassword,
+        newPassword: values.newPassword,
+      });
       toast.success("Password updated.");
       // Clear the must-change flag locally so the redirect-loop releases.
       if (user && accessToken) {
@@ -51,7 +55,6 @@ export function ChangePasswordPage() {
       }
       navigate("/dashboard", { replace: true });
     } catch (err) {
-      setSubmitting(false);
       let message = "Could not update password.";
       if (axios.isAxiosError(err)) {
         const data = err.response?.data as { message?: string } | undefined;
@@ -76,51 +79,57 @@ export function ChangePasswordPage() {
           <CardTitle>Update password</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={onSubmit} className="space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="current">Current password</Label>
-              <Input
-                id="current"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={current}
-                onChange={(e) => setCurrent(e.target.value)}
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5" noValidate>
+              <FormField
+                control={form.control}
+                name="currentPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Current password</FormLabel>
+                    <FormControl>
+                      <Input type="password" autoComplete="current-password" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="next">New password</Label>
-              <Input
-                id="next"
-                type="password"
-                autoComplete="new-password"
-                required
-                minLength={8}
-                value={next}
-                onChange={(e) => setNext(e.target.value)}
+              <FormField
+                control={form.control}
+                name="newPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>New password</FormLabel>
+                    <FormControl>
+                      <Input type="password" autoComplete="new-password" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="confirm">Confirm new password</Label>
-              <Input
-                id="confirm"
-                type="password"
-                autoComplete="new-password"
-                required
-                minLength={8}
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
+              <FormField
+                control={form.control}
+                name="confirm"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Confirm new password</FormLabel>
+                    <FormControl>
+                      <Input type="password" autoComplete="new-password" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
-            {error && (
-              <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-                {error}
-              </div>
-            )}
-            <Button type="submit" disabled={submitting}>
-              {submitting ? "Updating…" : "Update password"}
-            </Button>
-          </form>
+              {error && (
+                <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                  {error}
+                </div>
+              )}
+              <Button type="submit" disabled={form.formState.isSubmitting}>
+                {form.formState.isSubmitting ? "Updating…" : "Update password"}
+              </Button>
+            </form>
+          </Form>
         </CardContent>
       </Card>
     </div>

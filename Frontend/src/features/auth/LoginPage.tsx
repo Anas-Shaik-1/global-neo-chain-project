@@ -1,11 +1,26 @@
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { Link, Navigate } from "react-router-dom";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { Logo } from "@/components/brand/Logo";
 import { useAppDispatch, useAppSelector } from "@/app/hooks";
 import { loginThunk, login2FAThunk } from "./authThunks";
+import {
+  Login2FASchema,
+  LoginSchema,
+  type Login2FAValues,
+  type LoginValues,
+} from "./schemas";
 
 const FEATURE_PILLS = ["Time tracking", "Approvals", "Payroll"];
 
@@ -14,21 +29,32 @@ type Stage = "credentials" | "totp";
 export function LoginPage() {
   const dispatch = useAppDispatch();
   const user = useAppSelector((s) => s.auth.user);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [totp, setTotp] = useState("");
   const [stage, setStage] = useState<Stage>("credentials");
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  // We hold the credentials in component state so we can re-use them when the
+  // server demands a TOTP token — the 2FA endpoint expects email + password +
+  // token together.
+  const [credentials, setCredentials] = useState<LoginValues>({
+    email: "",
+    password: "",
+  });
+
+  const credentialsForm = useForm<LoginValues>({
+    resolver: zodResolver(LoginSchema),
+    defaultValues: { email: "", password: "" },
+  });
+
+  const totpForm = useForm<Login2FAValues>({
+    resolver: zodResolver(Login2FASchema),
+    defaultValues: { token: "" },
+  });
 
   if (user) return <Navigate to="/dashboard" replace />;
 
-  async function onSubmitCredentials(e: FormEvent) {
-    e.preventDefault();
+  async function onSubmitCredentials(values: LoginValues) {
     setError(null);
-    setSubmitting(true);
-    const action = await dispatch(loginThunk({ email, password }));
-    setSubmitting(false);
+    setCredentials(values);
+    const action = await dispatch(loginThunk(values));
     if (action.type.endsWith("/rejected")) {
       setError((action.payload as string) ?? "Login failed");
       return;
@@ -36,15 +62,15 @@ export function LoginPage() {
     const result = action.payload as { kind: "ok" | "2fa-required" } | undefined;
     if (result?.kind === "2fa-required") {
       setStage("totp");
+      totpForm.reset({ token: "" });
     }
   }
 
-  async function onSubmitTotp(e: FormEvent) {
-    e.preventDefault();
+  async function onSubmitTotp(values: Login2FAValues) {
     setError(null);
-    setSubmitting(true);
-    const action = await dispatch(login2FAThunk({ email, password, token: totp }));
-    setSubmitting(false);
+    const action = await dispatch(
+      login2FAThunk({ email: credentials.email, password: credentials.password, token: values.token }),
+    );
     if (action.type.endsWith("/rejected")) {
       setError((action.payload as string) ?? "Login failed");
     }
@@ -130,97 +156,137 @@ export function LoginPage() {
           </div>
 
           {stage === "credentials" ? (
-            <form onSubmit={onSubmitCredentials} className="space-y-5">
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Work email
-                </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@globalneochain.com"
-                  className="h-11"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Password
-                </Label>
-                <Input
-                  id="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="h-11"
-                />
-                <div className="text-right">
-                  <Link
-                    to="/forgot-password"
-                    className="text-xs font-medium text-primary hover:underline"
-                  >
-                    Forgot password?
-                  </Link>
-                </div>
-              </div>
-              {error && (
-                <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-                  {error}
-                </div>
-              )}
-              <div className="group relative">
-                <div className="absolute -inset-px rounded-md bg-gradient-to-r from-[hsl(195_90%_55%)] to-[hsl(210_90%_50%)] opacity-0 blur-sm transition-opacity duration-300 group-hover:opacity-60" />
-                <Button type="submit" className="relative h-11 w-full text-sm font-semibold" disabled={submitting}>
-                  {submitting ? "Signing in…" : "Sign in"}
-                </Button>
-              </div>
-            </form>
-          ) : (
-            <form onSubmit={onSubmitTotp} className="space-y-5">
-              <div className="space-y-2">
-                <Label htmlFor="totp" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Authenticator code
-                </Label>
-                <Input
-                  id="totp"
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  pattern="[0-9]{6}"
-                  maxLength={6}
-                  required
-                  value={totp}
-                  onChange={(e) => setTotp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                  className="h-11 font-mono tracking-[0.4em]"
-                  placeholder="123456"
-                  autoFocus
-                />
-              </div>
-              {error && (
-                <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-                  {error}
-                </div>
-              )}
-              <Button type="submit" className="h-11 w-full text-sm font-semibold" disabled={submitting || totp.length !== 6}>
-                {submitting ? "Verifying…" : "Verify"}
-              </Button>
-              <button
-                type="button"
-                onClick={() => {
-                  setStage("credentials");
-                  setTotp("");
-                  setError(null);
-                }}
-                className="block w-full text-center text-xs text-muted-foreground hover:text-foreground"
+            <Form {...credentialsForm}>
+              <form
+                onSubmit={credentialsForm.handleSubmit(onSubmitCredentials)}
+                className="space-y-5"
+                noValidate
               >
-                Back to sign in
-              </button>
-            </form>
+                <FormField
+                  control={credentialsForm.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                        Work email
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="email"
+                          autoComplete="email"
+                          placeholder="you@globalneochain.com"
+                          className="h-11"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={credentialsForm.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                        Password
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="password"
+                          autoComplete="current-password"
+                          className="h-11"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                      <div className="text-right">
+                        <Link
+                          to="/forgot-password"
+                          className="text-xs font-medium text-primary hover:underline"
+                        >
+                          Forgot password?
+                        </Link>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+                {error && (
+                  <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                    {error}
+                  </div>
+                )}
+                <div className="group relative">
+                  <div className="absolute -inset-px rounded-md bg-gradient-to-r from-[hsl(195_90%_55%)] to-[hsl(210_90%_50%)] opacity-0 blur-sm transition-opacity duration-300 group-hover:opacity-60" />
+                  <Button
+                    type="submit"
+                    className="relative h-11 w-full text-sm font-semibold"
+                    disabled={credentialsForm.formState.isSubmitting}
+                  >
+                    {credentialsForm.formState.isSubmitting ? "Signing in…" : "Sign in"}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          ) : (
+            <Form {...totpForm}>
+              <form
+                onSubmit={totpForm.handleSubmit(onSubmitTotp)}
+                className="space-y-5"
+                noValidate
+              >
+                <FormField
+                  control={totpForm.control}
+                  name="token"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                        Authenticator code
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
+                          maxLength={6}
+                          className="h-11 font-mono tracking-[0.4em]"
+                          placeholder="123456"
+                          autoFocus
+                          {...field}
+                          onChange={(e) =>
+                            field.onChange(e.target.value.replace(/\D/g, "").slice(0, 6))
+                          }
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {error && (
+                  <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                    {error}
+                  </div>
+                )}
+                <Button
+                  type="submit"
+                  className="h-11 w-full text-sm font-semibold"
+                  disabled={totpForm.formState.isSubmitting}
+                >
+                  {totpForm.formState.isSubmitting ? "Verifying…" : "Verify"}
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStage("credentials");
+                    totpForm.reset({ token: "" });
+                    setError(null);
+                  }}
+                  className="block w-full text-center text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Back to sign in
+                </button>
+              </form>
+            </Form>
           )}
 
           <p className="text-center text-xs text-muted-foreground">

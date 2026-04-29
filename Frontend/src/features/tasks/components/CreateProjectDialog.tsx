@@ -1,4 +1,6 @@
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Dialog,
   DialogContent,
@@ -7,9 +9,18 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { useCreateProject, type Project } from "../api/hooks";
+import { CreateProjectSchema, type CreateProjectValues } from "../schemas";
 
 interface Props {
   open: boolean;
@@ -19,23 +30,26 @@ interface Props {
 
 export function CreateProjectDialog({ open, onOpenChange, onCreated }: Props) {
   const create = useCreateProject();
-  const [name, setName] = useState("");
-  const [key, setKey] = useState("");
-  const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  const form = useForm<CreateProjectValues>({
+    resolver: zodResolver(CreateProjectSchema),
+    defaultValues: { name: "", key: "", description: "" },
+  });
+
   function reset() {
-    setName("");
-    setKey("");
-    setDescription("");
+    form.reset({ name: "", key: "", description: "" });
     setError(null);
   }
 
-  function onSubmit(e: FormEvent) {
-    e.preventDefault();
+  function onSubmit(values: CreateProjectValues) {
     setError(null);
     create.mutate(
-      { name, key, description: description || undefined },
+      {
+        name: values.name,
+        key: values.key,
+        description: values.description ? values.description : undefined,
+      },
       {
         onSuccess: (created) => {
           reset();
@@ -59,52 +73,66 @@ export function CreateProjectDialog({ open, onOpenChange, onCreated }: Props) {
         <DialogHeader>
           <DialogTitle>New project</DialogTitle>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="proj-name">Name</Label>
-            <Input
-              id="proj-name"
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Atlas"
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Name</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Atlas" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="proj-key">Key (slug)</Label>
-            <Input
-              id="proj-key"
-              required
-              value={key}
-              onChange={(e) => setKey(e.target.value.toLowerCase())}
-              placeholder="atlas"
-              pattern="[a-z0-9-]+"
+            <FormField
+              control={form.control}
+              name="key"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Key (slug)</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="atlas"
+                      {...field}
+                      onChange={(e) => field.onChange(e.target.value.toLowerCase())}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="proj-desc">Description (optional)</Label>
-            <textarea
-              id="proj-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              maxLength={500}
-              className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Description (optional)</FormLabel>
+                  <FormControl>
+                    <Textarea maxLength={500} {...field} value={field.value ?? ""} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
-          {error && (
-            <div role="alert" className="text-sm text-destructive">
-              {error}
-            </div>
-          )}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? "Creating..." : "Create project"}
-            </Button>
-          </DialogFooter>
-        </form>
+            {error && (
+              <div role="alert" className="text-sm text-destructive">
+                {error}
+              </div>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={create.isPending || form.formState.isSubmitting}>
+                {create.isPending ? "Creating..." : "Create project"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );

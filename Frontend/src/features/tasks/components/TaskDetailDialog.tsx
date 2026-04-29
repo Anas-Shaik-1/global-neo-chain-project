@@ -1,4 +1,6 @@
-import { useState, useEffect, type FormEvent } from "react";
+import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Dialog,
   DialogContent,
@@ -7,10 +9,25 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useEmployeesList } from "@/features/employees/api/hooks";
 import {
   useUpdateTask,
@@ -22,9 +39,18 @@ import {
   type Task,
   type TaskActivity,
   type TaskActivityKind,
-  type TaskPriority,
   type TaskStatus,
 } from "../api/hooks";
+import {
+  AddCommentSchema,
+  AddSubtaskSchema,
+  UpdateTaskSchema,
+  type AddCommentValues,
+  type AddSubtaskValues,
+  type UpdateTaskValues,
+} from "../schemas";
+
+const UNASSIGNED_VALUE = "__unassigned__";
 
 function dateToInput(iso?: string | null): string {
   if (!iso) return "";
@@ -120,45 +146,61 @@ export function TaskDetailDialog({ open, onOpenChange, task }: Props) {
   const subtasks = useSubtasks(task?.id);
   const createSubtask = useCreateTask();
 
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [status, setStatus] = useState<TaskStatus>("TODO");
-  const [priority, setPriority] = useState<TaskPriority>("MEDIUM");
-  const [assigneeId, setAssigneeId] = useState<string>("");
-  const [dueDate, setDueDate] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
-  const [newComment, setNewComment] = useState("");
   const [commentError, setCommentError] = useState<string | null>(null);
-  const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
   const [subtaskError, setSubtaskError] = useState<string | null>(null);
+
+  const detailsForm = useForm<UpdateTaskValues>({
+    resolver: zodResolver(UpdateTaskSchema),
+    defaultValues: {
+      title: "",
+      description: "",
+      status: "TODO",
+      priority: "MEDIUM",
+      assigneeId: "",
+      dueDate: "",
+    },
+  });
+
+  const commentForm = useForm<AddCommentValues>({
+    resolver: zodResolver(AddCommentSchema),
+    defaultValues: { body: "" },
+  });
+
+  const subtaskForm = useForm<AddSubtaskValues>({
+    resolver: zodResolver(AddSubtaskSchema),
+    defaultValues: { title: "" },
+  });
 
   useEffect(() => {
     if (!task) return;
-    setTitle(task.title);
-    setDescription(task.description ?? "");
-    setStatus(task.status);
-    setPriority(task.priority);
-    setAssigneeId(task.assigneeId ?? "");
-    setDueDate(dateToInput(task.dueDate));
+    detailsForm.reset({
+      title: task.title,
+      description: task.description ?? "",
+      status: task.status,
+      priority: task.priority,
+      assigneeId: task.assigneeId ?? "",
+      dueDate: dateToInput(task.dueDate),
+    });
     setError(null);
-    setNewComment("");
+    commentForm.reset({ body: "" });
     setCommentError(null);
-    setNewSubtaskTitle("");
+    subtaskForm.reset({ title: "" });
     setSubtaskError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task]);
 
-  function onSave(e: FormEvent) {
-    e.preventDefault();
+  function onSave(values: UpdateTaskValues) {
     if (!task) return;
     setError(null);
     update.mutate(
       {
-        title,
-        description: description || null,
-        status,
-        priority,
-        assigneeId: assigneeId || null,
-        dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+        title: values.title,
+        description: values.description ? values.description : null,
+        status: values.status,
+        priority: values.priority,
+        assigneeId: values.assigneeId ? values.assigneeId : null,
+        dueDate: values.dueDate ? new Date(values.dueDate).toISOString() : null,
       },
       {
         onError: (err) => setError((err as Error).message ?? "Failed to save"),
@@ -166,30 +208,26 @@ export function TaskDetailDialog({ open, onOpenChange, task }: Props) {
     );
   }
 
-  function onAddComment(e: FormEvent) {
-    e.preventDefault();
+  function onAddComment(values: AddCommentValues) {
     if (!task) return;
-    if (!newComment.trim()) return;
     setCommentError(null);
-    addComment.mutate(newComment, {
-      onSuccess: () => setNewComment(""),
+    addComment.mutate(values.body, {
+      onSuccess: () => commentForm.reset({ body: "" }),
       onError: (err) => setCommentError((err as Error).message ?? "Failed to add comment"),
     });
   }
 
-  function onAddSubtask(e: FormEvent) {
-    e.preventDefault();
+  function onAddSubtask(values: AddSubtaskValues) {
     if (!task) return;
-    if (!newSubtaskTitle.trim()) return;
     setSubtaskError(null);
     createSubtask.mutate(
       {
         projectId: task.projectId,
-        title: newSubtaskTitle.trim(),
+        title: values.title.trim(),
         parentTaskId: task.id,
       },
       {
-        onSuccess: () => setNewSubtaskTitle(""),
+        onSuccess: () => subtaskForm.reset({ title: "" }),
         onError: (err) => setSubtaskError((err as Error).message ?? "Failed to add subtask"),
       },
     );
@@ -232,93 +270,150 @@ export function TaskDetailDialog({ open, onOpenChange, task }: Props) {
           </TabsList>
 
           <TabsContent value="details" className="mt-4">
-            <form onSubmit={onSave} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="td-title">Title</Label>
-                <Input
-                  id="td-title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  maxLength={200}
+            <Form {...detailsForm}>
+              <form
+                onSubmit={detailsForm.handleSubmit(onSave)}
+                className="space-y-4"
+                noValidate
+              >
+                <FormField
+                  control={detailsForm.control}
+                  name="title"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Title</FormLabel>
+                      <FormControl>
+                        <Input maxLength={200} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="td-desc">Description</Label>
-                <textarea
-                  id="td-desc"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  maxLength={5000}
-                  className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                <FormField
+                  control={detailsForm.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Description</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          className="min-h-[100px]"
+                          maxLength={5000}
+                          {...field}
+                          value={field.value ?? ""}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="td-status">Status</Label>
-                  <select
-                    id="td-status"
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value as TaskStatus)}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    <option value="TODO">To do</option>
-                    <option value="IN_PROGRESS">In progress</option>
-                    <option value="DONE">Done</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="td-priority">Priority</Label>
-                  <select
-                    id="td-priority"
-                    value={priority}
-                    onChange={(e) => setPriority(e.target.value as TaskPriority)}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    <option value="LOW">Low</option>
-                    <option value="MEDIUM">Medium</option>
-                    <option value="HIGH">High</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="td-assignee">Assignee</Label>
-                  <select
-                    id="td-assignee"
-                    value={assigneeId}
-                    onChange={(e) => setAssigneeId(e.target.value)}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    <option value="">Unassigned</option>
-                    {employees.data?.items.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="td-due">Due date</Label>
-                  <Input
-                    id="td-due"
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <FormField
+                    control={detailsForm.control}
+                    name="status"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Status</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="TODO">To do</SelectItem>
+                            <SelectItem value="IN_PROGRESS">In progress</SelectItem>
+                            <SelectItem value="DONE">Done</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={detailsForm.control}
+                    name="priority"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Priority</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="LOW">Low</SelectItem>
+                            <SelectItem value="MEDIUM">Medium</SelectItem>
+                            <SelectItem value="HIGH">High</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={detailsForm.control}
+                    name="assigneeId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Assignee</FormLabel>
+                        <Select
+                          value={field.value ? field.value : UNASSIGNED_VALUE}
+                          onValueChange={(v) =>
+                            field.onChange(v === UNASSIGNED_VALUE ? "" : v)
+                          }
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Unassigned" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value={UNASSIGNED_VALUE}>Unassigned</SelectItem>
+                            {employees.data?.items.map((u) => (
+                              <SelectItem key={u.id} value={u.id}>
+                                {u.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={detailsForm.control}
+                    name="dueDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Due date</FormLabel>
+                        <FormControl>
+                          <Input type="date" {...field} value={field.value ?? ""} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
                   />
                 </div>
-              </div>
-              {error && (
-                <div role="alert" className="text-sm text-destructive">
-                  {error}
+                {error && (
+                  <div role="alert" className="text-sm text-destructive">
+                    {error}
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-muted-foreground">
+                    Created by {task.createdByName ?? "—"}
+                  </div>
+                  <Button
+                    type="submit"
+                    disabled={update.isPending || detailsForm.formState.isSubmitting}
+                  >
+                    {update.isPending ? "Saving..." : "Save changes"}
+                  </Button>
                 </div>
-              )}
-              <div className="flex items-center justify-between">
-                <div className="text-xs text-muted-foreground">
-                  Created by {task.createdByName ?? "—"}
-                </div>
-                <Button type="submit" disabled={update.isPending}>
-                  {update.isPending ? "Saving..." : "Save changes"}
-                </Button>
-              </div>
-            </form>
+              </form>
+            </Form>
           </TabsContent>
 
           <TabsContent value="comments" className="mt-4">
@@ -349,30 +444,45 @@ export function TaskDetailDialog({ open, onOpenChange, task }: Props) {
               <div className="text-sm text-muted-foreground">No comments yet.</div>
             )}
 
-            <form onSubmit={onAddComment} className="mt-4 space-y-2">
-              <Label htmlFor="td-new-comment">Add a comment</Label>
-              <textarea
-                id="td-new-comment"
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                maxLength={2000}
-                className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-              />
-              {commentError && (
-                <div role="alert" className="text-sm text-destructive">
-                  {commentError}
+            <Form {...commentForm}>
+              <form
+                onSubmit={commentForm.handleSubmit(onAddComment)}
+                className="mt-4 space-y-2"
+                noValidate
+              >
+                <FormField
+                  control={commentForm.control}
+                  name="body"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Add a comment</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          className="min-h-[60px]"
+                          maxLength={2000}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {commentError && (
+                  <div role="alert" className="text-sm text-destructive">
+                    {commentError}
+                  </div>
+                )}
+                <div className="flex justify-end">
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={addComment.isPending || commentForm.formState.isSubmitting}
+                  >
+                    {addComment.isPending ? "Posting..." : "Post comment"}
+                  </Button>
                 </div>
-              )}
-              <div className="flex justify-end">
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={addComment.isPending || !newComment.trim()}
-                >
-                  {addComment.isPending ? "Posting..." : "Post comment"}
-                </Button>
-              </div>
-            </form>
+              </form>
+            </Form>
           </TabsContent>
 
           <TabsContent value="subtasks" className="mt-4">
@@ -395,22 +505,38 @@ export function TaskDetailDialog({ open, onOpenChange, task }: Props) {
             ) : (
               <div className="text-sm text-muted-foreground">No subtasks yet.</div>
             )}
-            <form onSubmit={onAddSubtask} className="mt-4 flex gap-2">
-              <Input
-                aria-label="New subtask title"
-                placeholder="Subtask title"
-                value={newSubtaskTitle}
-                onChange={(e) => setNewSubtaskTitle(e.target.value)}
-                maxLength={200}
-              />
-              <Button
-                type="submit"
-                size="sm"
-                disabled={createSubtask.isPending || !newSubtaskTitle.trim()}
+            <Form {...subtaskForm}>
+              <form
+                onSubmit={subtaskForm.handleSubmit(onAddSubtask)}
+                className="mt-4 flex items-start gap-2"
+                noValidate
               >
-                {createSubtask.isPending ? "Adding..." : "Add subtask"}
-              </Button>
-            </form>
+                <FormField
+                  control={subtaskForm.control}
+                  name="title"
+                  render={({ field }) => (
+                    <FormItem className="flex-1">
+                      <FormControl>
+                        <Input
+                          aria-label="New subtask title"
+                          placeholder="Subtask title"
+                          maxLength={200}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={createSubtask.isPending || subtaskForm.formState.isSubmitting}
+                >
+                  {createSubtask.isPending ? "Adding..." : "Add subtask"}
+                </Button>
+              </form>
+            </Form>
             {subtaskError && (
               <div role="alert" className="mt-2 text-sm text-destructive">
                 {subtaskError}

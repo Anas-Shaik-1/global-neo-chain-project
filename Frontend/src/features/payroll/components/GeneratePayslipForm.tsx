@@ -1,20 +1,34 @@
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
+import { useForm, useFieldArray } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useEmployeesList } from "@/features/employees/api/hooks";
 import {
   BREAKDOWN_KINDS,
   useCreatePayslip,
   type BreakdownItem,
-  type BreakdownKind,
   type Payslip,
 } from "../api/hooks";
-
-interface BreakdownRow extends BreakdownItem {
-  rowId: number;
-}
+import { GeneratePayslipSchema } from "../schemas";
 
 interface Props {
   onCreated?: (payslip: Payslip) => void;
@@ -25,89 +39,66 @@ function defaultMonth(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+interface FormShape {
+  userId: string;
+  month: string;
+  currency: string;
+  gross: string;
+  notes: string;
+  breakdown: { label: string; amount: string; kind: (typeof BREAKDOWN_KINDS)[number] }[];
+}
+
+const SELECT_PLACEHOLDER = "__placeholder__";
+
 export function GeneratePayslipForm({ onCreated }: Props) {
   const employeesQ = useEmployeesList({ limit: 100 });
   const create = useCreatePayslip();
-
-  const [userId, setUserId] = useState("");
-  const [month, setMonth] = useState(defaultMonth());
-  const [currency, setCurrency] = useState("USD");
-  const [gross, setGross] = useState("");
-  const [notes, setNotes] = useState("");
-  const [rows, setRows] = useState<BreakdownRow[]>([]);
-  const [nextRowId, setNextRowId] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  function addRow() {
-    setRows((r) => [
-      ...r,
-      { rowId: nextRowId, label: "", amount: 0, kind: "EARNING" },
-    ]);
-    setNextRowId((n) => n + 1);
-  }
+  const form = useForm<FormShape>({
+    resolver: zodResolver(GeneratePayslipSchema) as never,
+    defaultValues: {
+      userId: "",
+      month: defaultMonth(),
+      currency: "USD",
+      gross: "",
+      notes: "",
+      breakdown: [],
+    },
+  });
 
-  function removeRow(id: number) {
-    setRows((r) => r.filter((x) => x.rowId !== id));
-  }
+  const { fields, append, remove } = useFieldArray({
+    control: form.control,
+    name: "breakdown",
+  });
 
-  function updateRow(id: number, patch: Partial<BreakdownRow>) {
-    setRows((r) => r.map((x) => (x.rowId === id ? { ...x, ...patch } : x)));
-  }
-
-  function reset() {
-    setUserId("");
-    setMonth(defaultMonth());
-    setCurrency("USD");
-    setGross("");
-    setNotes("");
-    setRows([]);
-    setError(null);
-  }
-
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
+  async function onSubmit(values: FormShape) {
     setError(null);
     setSuccess(null);
-    if (!userId) {
-      setError("Please choose an employee.");
-      return;
-    }
-    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
-      setError("Month must be in YYYY-MM format.");
-      return;
-    }
-    const numGross = Number(gross);
-    if (!Number.isFinite(numGross) || numGross < 0) {
-      setError("Gross must be a non-negative number (in cents).");
-      return;
-    }
-    for (const row of rows) {
-      if (!row.label.trim()) {
-        setError("Every breakdown row needs a label.");
-        return;
-      }
-      if (!Number.isFinite(row.amount) || row.amount < 0) {
-        setError("Breakdown amounts must be non-negative.");
-        return;
-      }
-    }
     try {
-      const breakdown: BreakdownItem[] = rows.map((r) => ({
-        label: r.label.trim(),
-        amount: r.amount,
-        kind: r.kind,
-      }));
+      const parsed = GeneratePayslipSchema.parse(values);
+      const breakdown: BreakdownItem[] | undefined =
+        parsed.breakdown && parsed.breakdown.length > 0
+          ? parsed.breakdown.map((r) => ({ label: r.label, amount: r.amount, kind: r.kind }))
+          : undefined;
       const created = await create.mutateAsync({
-        userId,
-        month,
-        currency: currency.trim().toUpperCase() || "USD",
-        gross: numGross,
-        breakdown: breakdown.length > 0 ? breakdown : undefined,
-        notes: notes.trim() || undefined,
+        userId: parsed.userId,
+        month: parsed.month,
+        currency: parsed.currency,
+        gross: parsed.gross,
+        breakdown,
+        notes: parsed.notes ? parsed.notes : undefined,
       });
       setSuccess(`Payslip generated for ${created.userName ?? created.userId}.`);
-      reset();
+      form.reset({
+        userId: "",
+        month: defaultMonth(),
+        currency: "USD",
+        gross: "",
+        notes: "",
+        breakdown: [],
+      });
       onCreated?.(created);
     } catch (err) {
       const e2 = err as { response?: { data?: { message?: string } }; message?: string };
@@ -124,152 +115,218 @@ export function GeneratePayslipForm({ onCreated }: Props) {
         <CardTitle>Generate payslip</CardTitle>
       </CardHeader>
       <CardContent>
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="payroll-user">Employee</Label>
-              <select
-                id="payroll-user"
-                value={userId}
-                onChange={(e) => setUserId(e.target.value)}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                required
-              >
-                <option value="">— select an employee —</option>
-                {employees.map((emp) => (
-                  <option key={emp.id} value={emp.id}>
-                    {emp.name} ({emp.email})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="payroll-month">Month (YYYY-MM)</Label>
-              <Input
-                id="payroll-month"
-                required
-                value={month}
-                onChange={(e) => setMonth(e.target.value)}
-                placeholder="2026-04"
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="userId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Employee</FormLabel>
+                    <Select
+                      value={field.value || SELECT_PLACEHOLDER}
+                      onValueChange={(v) =>
+                        field.onChange(v === SELECT_PLACEHOLDER ? "" : v)
+                      }
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="— select an employee —" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value={SELECT_PLACEHOLDER}>
+                          — select an employee —
+                        </SelectItem>
+                        {employees.map((emp) => (
+                          <SelectItem key={emp.id} value={emp.id}>
+                            {emp.name} ({emp.email})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="month"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Month (YYYY-MM)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="2026-04" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
             </div>
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="payroll-gross">Gross (in cents)</Label>
-              <Input
-                id="payroll-gross"
-                required
-                inputMode="numeric"
-                pattern="[0-9]*"
-                value={gross}
-                onChange={(e) => setGross(e.target.value)}
-                placeholder="500000"
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <FormField
+                control={form.control}
+                name="gross"
+                render={({ field }) => (
+                  <FormItem className="sm:col-span-2">
+                    <FormLabel>Gross (in cents)</FormLabel>
+                    <FormControl>
+                      <Input inputMode="numeric" placeholder="500000" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="currency"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Currency</FormLabel>
+                    <FormControl>
+                      <Input
+                        maxLength={3}
+                        {...field}
+                        onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="payroll-currency">Currency</Label>
-              <Input
-                id="payroll-currency"
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-                maxLength={3}
-                minLength={3}
-              />
-            </div>
-          </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Breakdown items</Label>
-              <Button type="button" size="sm" variant="outline" onClick={addRow}>
-                + Add row
-              </Button>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Breakdown items</Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => append({ label: "", amount: "0", kind: "EARNING" })}
+                >
+                  + Add row
+                </Button>
+              </div>
+              {fields.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No breakdown items. Net = gross.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {fields.map((row, idx) => (
+                    <div
+                      key={row.id}
+                      className="grid grid-cols-1 gap-2 rounded-md border border-border p-2 sm:grid-cols-[1fr_120px_140px_auto]"
+                    >
+                      <FormField
+                        control={form.control}
+                        name={`breakdown.${idx}.label` as const}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormControl>
+                              <Input
+                                aria-label="Label"
+                                placeholder="e.g. Bonus, Tax"
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name={`breakdown.${idx}.amount` as const}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormControl>
+                              <Input
+                                aria-label="Amount"
+                                inputMode="numeric"
+                                placeholder="amount (cents)"
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name={`breakdown.${idx}.kind` as const}
+                        render={({ field }) => (
+                          <FormItem>
+                            <Select value={field.value} onValueChange={field.onChange}>
+                              <FormControl>
+                                <SelectTrigger aria-label="Kind">
+                                  <SelectValue />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {BREAKDOWN_KINDS.map((k) => (
+                                  <SelectItem key={k} value={k}>
+                                    {k}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => remove(idx)}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            {rows.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                No breakdown items. Net = gross.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {rows.map((row) => (
-                  <div
-                    key={row.rowId}
-                    className="grid grid-cols-1 gap-2 rounded-md border border-border p-2 sm:grid-cols-[1fr_120px_140px_auto]"
-                  >
-                    <Input
-                      aria-label="Label"
-                      value={row.label}
-                      onChange={(e) => updateRow(row.rowId, { label: e.target.value })}
-                      placeholder="e.g. Bonus, Tax"
+
+            <FormField
+              control={form.control}
+              name="notes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Notes (optional)</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      maxLength={1000}
+                      placeholder="Any notes for this payslip"
+                      {...field}
+                      value={field.value ?? ""}
                     />
-                    <Input
-                      aria-label="Amount"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      value={String(row.amount)}
-                      onChange={(e) =>
-                        updateRow(row.rowId, { amount: Number(e.target.value) || 0 })
-                      }
-                      placeholder="amount (cents)"
-                    />
-                    <select
-                      aria-label="Kind"
-                      value={row.kind}
-                      onChange={(e) =>
-                        updateRow(row.rowId, { kind: e.target.value as BreakdownKind })
-                      }
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    >
-                      {BREAKDOWN_KINDS.map((k) => (
-                        <option key={k} value={k}>
-                          {k}
-                        </option>
-                      ))}
-                    </select>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => removeRow(row.rowId)}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                ))}
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {error && (
+              <div role="alert" className="text-sm text-destructive">
+                {error}
               </div>
             )}
-          </div>
+            {success && (
+              <div role="status" className="text-sm text-emerald-600 dark:text-emerald-400">
+                {success}
+              </div>
+            )}
 
-          <div className="space-y-2">
-            <Label htmlFor="payroll-notes">Notes (optional)</Label>
-            <textarea
-              id="payroll-notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              maxLength={1000}
-              className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              placeholder="Any notes for this payslip"
-            />
-          </div>
-
-          {error && (
-            <div role="alert" className="text-sm text-destructive">
-              {error}
+            <div className="flex justify-end">
+              <Button type="submit" disabled={pending || form.formState.isSubmitting}>
+                {pending ? "Generating..." : "Generate payslip"}
+              </Button>
             </div>
-          )}
-          {success && (
-            <div role="status" className="text-sm text-emerald-600 dark:text-emerald-400">
-              {success}
-            </div>
-          )}
-
-          <div className="flex justify-end">
-            <Button type="submit" disabled={pending}>
-              {pending ? "Generating..." : "Generate payslip"}
-            </Button>
-          </div>
-        </form>
+          </form>
+        </Form>
       </CardContent>
     </Card>
   );

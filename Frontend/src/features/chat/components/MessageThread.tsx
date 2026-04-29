@@ -1,10 +1,20 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, type KeyboardEvent } from "react";
 import { Phone } from "lucide-react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+} from "@/components/ui/form";
 import { cn } from "@/lib/utils";
 import { useCall } from "@/features/calls/CallProvider";
 import type { ChatMessage, Conversation } from "../api/hooks";
+import { ChatMessageSchema, type ChatMessageValues } from "../schemas";
 
 interface Props {
   conversation: Conversation;
@@ -47,10 +57,15 @@ export function MessageThread({
   onSend,
   isSending,
 }: Props) {
-  const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const call = useCall();
   const peer = otherParticipant(conversation, meId);
+
+  const form = useForm<ChatMessageValues>({
+    resolver: zodResolver(ChatMessageSchema),
+    defaultValues: { body: "" },
+  });
+  const draft = form.watch("body");
 
   // The list is rendered oldest-at-top, so scroll to bottom when new messages arrive.
   useEffect(() => {
@@ -58,12 +73,18 @@ export function MessageThread({
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages.length, conversation.id]);
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    const trimmed = draft.trim();
+  async function onSubmit(values: ChatMessageValues) {
+    const trimmed = values.body.trim();
     if (!trimmed || isSending) return;
     await onSend(trimmed);
-    setDraft("");
+    form.reset({ body: "" });
+  }
+
+  function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void form.handleSubmit(onSubmit)();
+    }
   }
 
   // The API returns newest first; render oldest-first by reversing.
@@ -129,28 +150,35 @@ export function MessageThread({
         )}
       </div>
 
-      <form
-        onSubmit={handleSubmit}
-        className="flex items-end gap-2 border-t border-border px-3 py-3"
-      >
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="Type a message..."
-          rows={2}
-          maxLength={4000}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void handleSubmit(e as unknown as FormEvent);
-            }
-          }}
-          className="flex min-h-[44px] flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-        />
-        <Button type="submit" disabled={isSending || draft.trim().length === 0}>
-          {isSending ? "Sending..." : "Send"}
-        </Button>
-      </form>
+      <Form {...form}>
+        <form
+          onSubmit={form.handleSubmit(onSubmit)}
+          className="flex items-end gap-2 border-t border-border px-3 py-3"
+          noValidate
+        >
+          <FormField
+            control={form.control}
+            name="body"
+            render={({ field }) => (
+              <FormItem className="flex-1 space-y-0">
+                <FormControl>
+                  <Textarea
+                    rows={2}
+                    maxLength={4000}
+                    placeholder="Type a message..."
+                    className="min-h-[44px] resize-none"
+                    {...field}
+                    onKeyDown={onKeyDown}
+                  />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+          <Button type="submit" disabled={isSending || draft.trim().length === 0}>
+            {isSending ? "Sending..." : "Send"}
+          </Button>
+        </form>
+      </Form>
     </div>
   );
 }

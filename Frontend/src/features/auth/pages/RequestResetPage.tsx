@@ -1,24 +1,33 @@
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { getApi } from "@/api/axios";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { Logo } from "@/components/brand/Logo";
+import { RequestResetSchema, type RequestResetValues } from "../schemas";
 
 export function RequestResetPage() {
-  const [email, setEmail] = useState("");
-  const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const form = useForm<RequestResetValues>({
+    resolver: zodResolver(RequestResetSchema),
+    defaultValues: { email: "" },
+  });
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
+  async function onSubmit(values: RequestResetValues) {
     try {
-      await getApi().post("/auth/password-reset/request", { email });
+      await getApi().post("/auth/password-reset/request", { email: values.email });
     } finally {
-      setSubmitting(false);
       // Always show the same friendly message — we don't reveal whether the
       // email is known to avoid account-enumeration leaks.
       toast.success("If that email exists in our system, we've sent reset instructions.");
@@ -43,26 +52,38 @@ export function RequestResetPage() {
           </p>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-5">
-          <div className="space-y-2">
-            <Label htmlFor="email" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Work email
-            </Label>
-            <Input
-              id="email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@globalneochain.com"
-              className="h-11"
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5" noValidate>
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Work email
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      type="email"
+                      autoComplete="email"
+                      placeholder="you@globalneochain.com"
+                      className="h-11"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
-          <Button type="submit" className="h-11 w-full text-sm font-semibold" disabled={submitting || submitted}>
-            {submitting ? "Sending…" : submitted ? "Sent" : "Send reset link"}
-          </Button>
-        </form>
+            <Button
+              type="submit"
+              className="h-11 w-full text-sm font-semibold"
+              disabled={form.formState.isSubmitting || submitted}
+            >
+              {form.formState.isSubmitting ? "Sending…" : submitted ? "Sent" : "Send reset link"}
+            </Button>
+          </form>
+        </Form>
 
         <p className="text-center text-xs text-muted-foreground">
           <Link to="/login" className="font-medium text-primary hover:underline">

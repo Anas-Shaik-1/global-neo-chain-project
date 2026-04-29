@@ -1,14 +1,23 @@
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { ShieldCheck, KeyRound } from "lucide-react";
 import { getApi } from "@/api/axios";
 import { useAppDispatch, useAppSelector } from "@/app/hooks";
 import { sessionEstablished } from "@/features/auth/authSlice";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   Dialog,
@@ -19,6 +28,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/common/PageHeader";
+import {
+  TwoFactorDisableSchema,
+  TwoFactorVerifySchema,
+  type TwoFactorDisableValues,
+  type TwoFactorVerifyValues,
+} from "../schemas";
 
 interface TotpSetupResult {
   secret: string;
@@ -34,14 +49,19 @@ export function SecurityPage() {
   const [setupOpen, setSetupOpen] = useState(false);
   const [setupData, setSetupData] = useState<TotpSetupResult | null>(null);
   const [setupLoading, setSetupLoading] = useState(false);
-  const [verifyToken, setVerifyToken] = useState("");
   const [verifyError, setVerifyError] = useState<string | null>(null);
-  const [verifyBusy, setVerifyBusy] = useState(false);
-
   const [disableOpen, setDisableOpen] = useState(false);
-  const [disablePw, setDisablePw] = useState("");
   const [disableErr, setDisableErr] = useState<string | null>(null);
-  const [disableBusy, setDisableBusy] = useState(false);
+
+  const verifyForm = useForm<TwoFactorVerifyValues>({
+    resolver: zodResolver(TwoFactorVerifySchema),
+    defaultValues: { token: "" },
+  });
+
+  const disableForm = useForm<TwoFactorDisableValues>({
+    resolver: zodResolver(TwoFactorDisableSchema),
+    defaultValues: { password: "" },
+  });
 
   if (!user) return null;
   const totpEnabled = user.totpEnabled === true;
@@ -50,7 +70,7 @@ export function SecurityPage() {
     setSetupOpen(true);
     setSetupLoading(true);
     setVerifyError(null);
-    setVerifyToken("");
+    verifyForm.reset({ token: "" });
     try {
       const res = await getApi().post<TotpSetupResult>("/auth/2fa/setup");
       setSetupData(res.data);
@@ -62,19 +82,17 @@ export function SecurityPage() {
     }
   }
 
-  async function onVerify(e: FormEvent) {
-    e.preventDefault();
+  async function onVerify(values: TwoFactorVerifyValues) {
     setVerifyError(null);
-    setVerifyBusy(true);
     try {
-      await getApi().post("/auth/2fa/verify", { token: verifyToken });
+      await getApi().post("/auth/2fa/verify", { token: values.token });
       toast.success("Two-factor authentication enabled.");
       if (user && accessToken) {
         dispatch(sessionEstablished({ accessToken, user: { ...user, totpEnabled: true } }));
       }
       setSetupOpen(false);
       setSetupData(null);
-      setVerifyToken("");
+      verifyForm.reset({ token: "" });
     } catch (err) {
       let message = "Invalid code. Try again.";
       if (axios.isAxiosError(err)) {
@@ -82,23 +100,19 @@ export function SecurityPage() {
         if (data?.message) message = data.message;
       }
       setVerifyError(message);
-    } finally {
-      setVerifyBusy(false);
     }
   }
 
-  async function onDisable(e: FormEvent) {
-    e.preventDefault();
+  async function onDisable(values: TwoFactorDisableValues) {
     setDisableErr(null);
-    setDisableBusy(true);
     try {
-      await getApi().post("/auth/2fa/disable", { password: disablePw });
+      await getApi().post("/auth/2fa/disable", { password: values.password });
       toast.success("Two-factor authentication disabled.");
       if (user && accessToken) {
         dispatch(sessionEstablished({ accessToken, user: { ...user, totpEnabled: false } }));
       }
       setDisableOpen(false);
-      setDisablePw("");
+      disableForm.reset({ password: "" });
     } catch (err) {
       let message = "Could not disable 2FA.";
       if (axios.isAxiosError(err)) {
@@ -106,8 +120,6 @@ export function SecurityPage() {
         if (data?.message) message = data.message;
       }
       setDisableErr(message);
-    } finally {
-      setDisableBusy(false);
     }
   }
 
@@ -172,7 +184,7 @@ export function SecurityPage() {
           setSetupOpen(o);
           if (!o) {
             setSetupData(null);
-            setVerifyToken("");
+            verifyForm.reset({ token: "" });
             setVerifyError(null);
           }
         }}
@@ -190,51 +202,61 @@ export function SecurityPage() {
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             </div>
           ) : (
-            <form onSubmit={onVerify} className="space-y-4">
-              <div className="flex justify-center">
-                <img
-                  src={setupData.qrCodeDataUrl}
-                  alt="2FA QR code"
-                  className="h-48 w-48 rounded-md border border-border bg-white p-2"
-                />
-              </div>
-              <div className="space-y-1 text-center">
-                <p className="text-xs text-muted-foreground">
-                  Or enter the secret manually:
-                </p>
-                <code className="block break-all rounded-md border border-border bg-muted px-3 py-2 font-mono text-xs">
-                  {setupData.secret}
-                </code>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="totp">6-digit code</Label>
-                <Input
-                  id="totp"
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]{6}"
-                  maxLength={6}
-                  required
-                  value={verifyToken}
-                  onChange={(e) => setVerifyToken(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                  className="font-mono tracking-[0.4em]"
-                  autoFocus
-                />
-              </div>
-              {verifyError && (
-                <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-                  {verifyError}
+            <Form {...verifyForm}>
+              <form onSubmit={verifyForm.handleSubmit(onVerify)} className="space-y-4" noValidate>
+                <div className="flex justify-center">
+                  <img
+                    src={setupData.qrCodeDataUrl}
+                    alt="2FA QR code"
+                    className="h-48 w-48 rounded-md border border-border bg-white p-2"
+                  />
                 </div>
-              )}
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setSetupOpen(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={verifyBusy || verifyToken.length !== 6}>
-                  {verifyBusy ? "Verifying…" : "Enable 2FA"}
-                </Button>
-              </DialogFooter>
-            </form>
+                <div className="space-y-1 text-center">
+                  <p className="text-xs text-muted-foreground">
+                    Or enter the secret manually:
+                  </p>
+                  <code className="block break-all rounded-md border border-border bg-muted px-3 py-2 font-mono text-xs">
+                    {setupData.secret}
+                  </code>
+                </div>
+                <FormField
+                  control={verifyForm.control}
+                  name="token"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>6-digit code</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={6}
+                          className="font-mono tracking-[0.4em]"
+                          autoFocus
+                          {...field}
+                          onChange={(e) =>
+                            field.onChange(e.target.value.replace(/\D/g, "").slice(0, 6))
+                          }
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {verifyError && (
+                  <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                    {verifyError}
+                  </div>
+                )}
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setSetupOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={verifyForm.formState.isSubmitting}>
+                    {verifyForm.formState.isSubmitting ? "Verifying…" : "Enable 2FA"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </Form>
           )}
         </DialogContent>
       </Dialog>
@@ -244,7 +266,7 @@ export function SecurityPage() {
         onOpenChange={(o) => {
           setDisableOpen(o);
           if (!o) {
-            setDisablePw("");
+            disableForm.reset({ password: "" });
             setDisableErr(null);
           }
         }}
@@ -256,32 +278,40 @@ export function SecurityPage() {
               Confirm your password to remove 2FA from your account.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={onDisable} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="disable-pw">Password</Label>
-              <Input
-                id="disable-pw"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={disablePw}
-                onChange={(e) => setDisablePw(e.target.value)}
+          <Form {...disableForm}>
+            <form onSubmit={disableForm.handleSubmit(onDisable)} className="space-y-4" noValidate>
+              <FormField
+                control={disableForm.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Password</FormLabel>
+                    <FormControl>
+                      <Input type="password" autoComplete="current-password" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
-            {disableErr && (
-              <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-                {disableErr}
-              </div>
-            )}
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDisableOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" variant="destructive" disabled={disableBusy}>
-                {disableBusy ? "Disabling…" : "Disable 2FA"}
-              </Button>
-            </DialogFooter>
-          </form>
+              {disableErr && (
+                <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                  {disableErr}
+                </div>
+              )}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setDisableOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="destructive"
+                  disabled={disableForm.formState.isSubmitting}
+                >
+                  {disableForm.formState.isSubmitting ? "Disabling…" : "Disable 2FA"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
         </DialogContent>
       </Dialog>
     </div>

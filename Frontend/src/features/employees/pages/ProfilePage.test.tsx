@@ -31,7 +31,7 @@ beforeEach(() => {
 
 const fullProfile = {
   id: "u1", email: "u@b.com", name: "User", role: "EMPLOYEE", isActive: true,
-  jobTitle: "Engineer", phone: "555", bio: "hello",
+  jobTitle: "Engineer", phone: "555-555-1234", bio: "hello",
   createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
 };
 
@@ -46,7 +46,7 @@ describe("ProfilePage", () => {
       </Provider>,
     );
     expect(await screen.findByDisplayValue("User")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("555")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("555-555-1234")).toBeInTheDocument();
     expect(screen.getByDisplayValue("hello")).toBeInTheDocument();
   });
 

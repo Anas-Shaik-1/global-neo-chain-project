@@ -3,6 +3,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { PageHeader } from "@/components/common/PageHeader";
 import { useAppSelector } from "@/app/hooks";
 import {
@@ -24,19 +31,22 @@ function StatusFilter({
   onChange: (next: ExpenseStatus | "ALL") => void;
 }) {
   return (
-    <select
+    <Select
       value={value}
-      onChange={(e) => onChange(e.target.value as ExpenseStatus | "ALL")}
-      className="flex h-9 min-w-[10rem] rounded-md border border-input bg-background px-3 py-1 text-sm"
-      aria-label="Filter by status"
+      onValueChange={(v) => onChange(v as ExpenseStatus | "ALL")}
     >
-      <option value="ALL">All statuses</option>
-      {EXPENSE_STATUSES.map((s) => (
-        <option key={s} value={s}>
-          {s}
-        </option>
-      ))}
-    </select>
+      <SelectTrigger aria-label="Filter by status" className="h-9 min-w-[10rem]">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="ALL">All statuses</SelectItem>
+        {EXPENSE_STATUSES.map((s) => (
+          <SelectItem key={s} value={s}>
+            {s}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 

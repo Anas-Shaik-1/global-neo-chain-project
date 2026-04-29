@@ -1,4 +1,6 @@
-import { useState, useEffect, type FormEvent } from "react";
+import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Dialog,
   DialogContent,
@@ -7,10 +9,28 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useEmployeesList } from "@/features/employees/api/hooks";
-import { useCreateTask, type TaskPriority, type TaskStatus, type Task } from "../api/hooks";
+import { useCreateTask, type TaskStatus, type Task } from "../api/hooks";
+import { CreateTaskSchema, type CreateTaskValues } from "../schemas";
+
+const UNASSIGNED_VALUE = "__unassigned__";
 
 interface Props {
   open: boolean;
@@ -23,37 +43,43 @@ interface Props {
 export function CreateTaskDialog({ open, onOpenChange, projectId, onCreated }: Props) {
   const create = useCreateTask();
   const employees = useEmployeesList({ limit: 100 });
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [priority, setPriority] = useState<TaskPriority>("MEDIUM");
-  const [assigneeId, setAssigneeId] = useState<string>("");
-  const [dueDate, setDueDate] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
 
-  function reset() {
-    setTitle("");
-    setDescription("");
-    setPriority("MEDIUM");
-    setAssigneeId("");
-    setDueDate("");
-    setError(null);
-  }
+  const form = useForm<CreateTaskValues>({
+    resolver: zodResolver(CreateTaskSchema),
+    defaultValues: {
+      title: "",
+      description: "",
+      priority: "MEDIUM",
+      assigneeId: "",
+      dueDate: "",
+    },
+  });
 
   useEffect(() => {
-    if (!open) reset();
+    if (!open) {
+      form.reset({
+        title: "",
+        description: "",
+        priority: "MEDIUM",
+        assigneeId: "",
+        dueDate: "",
+      });
+      setError(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  function onSubmit(e: FormEvent) {
-    e.preventDefault();
+  function onSubmit(values: CreateTaskValues) {
     setError(null);
     create.mutate(
       {
         projectId,
-        title,
-        description: description || undefined,
-        priority,
-        assigneeId: assigneeId || null,
-        dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+        title: values.title,
+        description: values.description ? values.description : undefined,
+        priority: values.priority,
+        assigneeId: values.assigneeId ? values.assigneeId : null,
+        dueDate: values.dueDate ? new Date(values.dueDate).toISOString() : null,
       },
       {
         onSuccess: (created) => {
@@ -71,81 +97,116 @@ export function CreateTaskDialog({ open, onOpenChange, projectId, onCreated }: P
         <DialogHeader>
           <DialogTitle>New task</DialogTitle>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="task-title">Title</Label>
-            <Input
-              id="task-title"
-              required
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              maxLength={200}
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
+            <FormField
+              control={form.control}
+              name="title"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Title</FormLabel>
+                  <FormControl>
+                    <Input maxLength={200} {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="task-desc">Description</Label>
-            <textarea
-              id="task-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              maxLength={5000}
-              className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Description</FormLabel>
+                  <FormControl>
+                    <Textarea maxLength={5000} {...field} value={field.value ?? ""} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="task-priority">Priority</Label>
-              <select
-                id="task-priority"
-                value={priority}
-                onChange={(e) => setPriority(e.target.value as TaskPriority)}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              >
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-              </select>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="priority"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Priority</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="LOW">Low</SelectItem>
+                        <SelectItem value="MEDIUM">Medium</SelectItem>
+                        <SelectItem value="HIGH">High</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="assigneeId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Assignee</FormLabel>
+                    <Select
+                      value={field.value ? field.value : UNASSIGNED_VALUE}
+                      onValueChange={(v) =>
+                        field.onChange(v === UNASSIGNED_VALUE ? "" : v)
+                      }
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Unassigned" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value={UNASSIGNED_VALUE}>Unassigned</SelectItem>
+                        {employees.data?.items.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            {u.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="task-assignee">Assignee</Label>
-              <select
-                id="task-assignee"
-                value={assigneeId}
-                onChange={(e) => setAssigneeId(e.target.value)}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              >
-                <option value="">Unassigned</option>
-                {employees.data?.items.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="task-due">Due date</Label>
-            <Input
-              id="task-due"
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
+            <FormField
+              control={form.control}
+              name="dueDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Due date</FormLabel>
+                  <FormControl>
+                    <Input type="date" {...field} value={field.value ?? ""} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
-          {error && (
-            <div role="alert" className="text-sm text-destructive">
-              {error}
-            </div>
-          )}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? "Creating..." : "Create task"}
-            </Button>
-          </DialogFooter>
-        </form>
+            {error && (
+              <div role="alert" className="text-sm text-destructive">
+                {error}
+              </div>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={create.isPending || form.formState.isSubmitting}>
+                {create.isPending ? "Creating..." : "Create task"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );

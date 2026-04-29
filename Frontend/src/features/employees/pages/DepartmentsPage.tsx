@@ -1,29 +1,38 @@
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { PageHeader } from "@/components/common/PageHeader";
 import { useDepartmentsList, useCreateDepartment } from "../api/hooks";
+import { CreateDepartmentSchema, type CreateDepartmentValues } from "../schemas";
 
 export function DepartmentsPage() {
   const list = useDepartmentsList();
   const create = useCreateDepartment();
-  const [name, setName] = useState("");
-  const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  function onCreate(e: FormEvent) {
-    e.preventDefault();
+  const form = useForm<CreateDepartmentValues>({
+    resolver: zodResolver(CreateDepartmentSchema),
+    defaultValues: { name: "", code: "" },
+  });
+
+  function onCreate(values: CreateDepartmentValues) {
     setError(null);
-    create.mutate(
-      { name, code },
-      {
-        onSuccess: () => { setName(""); setCode(""); },
-        onError: (err) => setError((err as Error).message ?? "Failed"),
-      },
-    );
+    create.mutate(values, {
+      onSuccess: () => form.reset({ name: "", code: "" }),
+      onError: (err) => setError((err as Error).message ?? "Failed"),
+    });
   }
 
   return (
@@ -35,20 +44,54 @@ export function DepartmentsPage() {
       <Card>
         <CardHeader><CardTitle>Create department</CardTitle></CardHeader>
         <CardContent>
-          <form onSubmit={onCreate} className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:items-end">
-            <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
-              <Input id="name" required value={name} onChange={(e) => setName(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="code">Code (slug)</Label>
-              <Input id="code" required value={code} onChange={(e) => setCode(e.target.value)} placeholder="eng" />
-            </div>
-            <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? "Creating…" : "Create"}
-            </Button>
-            {error && <div className="col-span-full text-sm text-destructive" role="alert">{error}</div>}
-          </form>
+          <Form {...form}>
+            <form
+              onSubmit={form.handleSubmit(onCreate)}
+              className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:items-start"
+              noValidate
+            >
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Name</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="code"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Code (slug)</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="eng"
+                        {...field}
+                        onChange={(e) => field.onChange(e.target.value.toLowerCase())}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="sm:pt-7">
+                <Button type="submit" disabled={create.isPending || form.formState.isSubmitting}>
+                  {create.isPending ? "Creating…" : "Create"}
+                </Button>
+              </div>
+              {error && (
+                <div className="col-span-full text-sm text-destructive" role="alert">
+                  {error}
+                </div>
+              )}
+            </form>
+          </Form>
         </CardContent>
       </Card>
 

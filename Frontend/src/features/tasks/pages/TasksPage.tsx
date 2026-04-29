@@ -6,6 +6,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/common/PageHeader";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { RoleGate } from "@/features/auth/RoleGate";
 import { getApi } from "@/api/axios";
 import { KanbanBoard } from "../components/KanbanBoard";
@@ -86,20 +93,25 @@ export function TasksPage() {
         description="Plan and track work across projects."
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={selectedProjectId}
-              onChange={(e) => setSelectedProjectId(e.target.value)}
+            <Select
+              value={selectedProjectId || undefined}
+              onValueChange={setSelectedProjectId}
               disabled={!hasProjects}
-              className="flex h-9 min-w-[12rem] rounded-md border border-input bg-background px-3 py-1 text-sm"
-              aria-label="Select project"
             >
-              {!hasProjects && <option value="">No projects</option>}
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.key})
-                </option>
-              ))}
-            </select>
+              <SelectTrigger
+                aria-label="Select project"
+                className="h-9 min-w-[12rem]"
+              >
+                <SelectValue placeholder={hasProjects ? "Select project" : "No projects"} />
+              </SelectTrigger>
+              <SelectContent>
+                {projects.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name} ({p.key})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <RoleGate requirePM>
               <Button size="sm" variant="outline" onClick={() => setShowCreateProject(true)}>
                 + New project
