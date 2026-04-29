@@ -96,12 +96,12 @@ describe("/attendance", () => {
   it("POST /attendance/clock-out after clock-in returns 200 with non-null durationMinutes", async () => {
     const e = await seedAndToken("EMPLOYEE", "e@b.com");
     const { Attendance } = await import("../../models/attendance.model.js");
-    // Pre-seed a clock-in 30 minutes ago so clock-out yields a positive duration.
-    const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
+    // Pre-seed a clock-in 90 minutes ago so clock-out passes the 1-hour rule.
+    const ninetyMinAgo = new Date(Date.now() - 90 * 60 * 1000);
     await Attendance.create({
       userId: new Types.ObjectId(e.id),
       date: todayUtc(),
-      clockIn: thirtyMinAgo,
+      clockIn: ninetyMinAgo,
       clockOut: null,
     });
     const app = await buildApp();
@@ -111,7 +111,67 @@ describe("/attendance", () => {
       .send({});
     expect(res.status).toBe(200);
     expect(res.body.clockOut).toBeTruthy();
-    expect(res.body.durationMinutes).toBeGreaterThanOrEqual(29);
+    expect(res.body.durationMinutes).toBeGreaterThanOrEqual(89);
+  });
+
+  it("POST /attendance/clock-out within 1hr returns 409", async () => {
+    const e = await seedAndToken("EMPLOYEE", "e@b.com");
+    const { Attendance } = await import("../../models/attendance.model.js");
+    // Pre-seed a clock-in 10 minutes ago — too soon to clock out.
+    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
+    await Attendance.create({
+      userId: new Types.ObjectId(e.id),
+      date: todayUtc(),
+      clockIn: tenMinAgo,
+      clockOut: null,
+    });
+    const app = await buildApp();
+    const res = await request(app)
+      .post("/attendance/clock-out")
+      .set("Authorization", `Bearer ${e.token}`)
+      .send({});
+    expect(res.status).toBe(409);
+  });
+
+  it("POST /attendance/lunch-start returns 200 happy path", async () => {
+    const e = await seedAndToken("EMPLOYEE", "e@b.com");
+    const { Attendance } = await import("../../models/attendance.model.js");
+    const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000);
+    await Attendance.create({
+      userId: new Types.ObjectId(e.id),
+      date: todayUtc(),
+      clockIn: fifteenMinAgo,
+      clockOut: null,
+    });
+    const app = await buildApp();
+    const res = await request(app)
+      .post("/attendance/lunch-start")
+      .set("Authorization", `Bearer ${e.token}`)
+      .send({});
+    expect(res.status).toBe(200);
+    expect(res.body.lunchStart).toBeTruthy();
+    expect(res.body.lunchEnd).toBeNull();
+  });
+
+  it("POST /attendance/lunch-end returns 200 happy path", async () => {
+    const e = await seedAndToken("EMPLOYEE", "e@b.com");
+    const { Attendance } = await import("../../models/attendance.model.js");
+    const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000);
+    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
+    await Attendance.create({
+      userId: new Types.ObjectId(e.id),
+      date: todayUtc(),
+      clockIn: fifteenMinAgo,
+      lunchStart: tenMinAgo,
+      clockOut: null,
+    });
+    const app = await buildApp();
+    const res = await request(app)
+      .post("/attendance/lunch-end")
+      .set("Authorization", `Bearer ${e.token}`)
+      .send({});
+    expect(res.status).toBe(200);
+    expect(res.body.lunchEnd).toBeTruthy();
   });
 
   it("GET /attendance/me?month=YYYY-MM aggregates correctly", async () => {

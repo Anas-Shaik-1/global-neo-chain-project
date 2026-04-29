@@ -23,7 +23,11 @@ export interface AttendanceEntry {
   date: string;
   clockIn: string;
   clockOut: string | null;
+  lunchStart: string | null;
+  lunchEnd: string | null;
+  lunchMinutes: number;
   durationMinutes: number | null;
+  isRemote: boolean;
   notes?: string | null;
   createdAt: string;
 }
@@ -68,7 +72,7 @@ export function useTodayAttendance() {
 export function useClockIn() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { notes?: string } = {}) => {
+    mutationFn: async (input: { notes?: string; isRemote?: boolean } = {}) => {
       const res = await api().post("/attendance/clock-in", input);
       return res.data as AttendanceEntry;
     },
@@ -94,5 +98,35 @@ export function useClockOut() {
       toast.success(`Clocked out — ${hours}h worked`);
     },
     onError: (err) => toast.error(errorMessage(err, "Could not clock out")),
+  });
+}
+
+export function useStartLunch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api().post("/attendance/lunch-start", {});
+      return res.data as AttendanceEntry;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: attendanceKeys.all });
+      toast.success("Lunch started");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not start lunch")),
+  });
+}
+
+export function useEndLunch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api().post("/attendance/lunch-end", {});
+      return res.data as AttendanceEntry;
+    },
+    onSuccess: (entry) => {
+      qc.invalidateQueries({ queryKey: attendanceKeys.all });
+      toast.success(`Lunch ended (${entry.lunchMinutes} min)`);
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not end lunch")),
   });
 }

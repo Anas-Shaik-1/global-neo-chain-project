@@ -31,7 +31,7 @@ describe("attendance.service", () => {
   it("clockIn creates a new entry for today", async () => {
     const { clockIn } = await import("./attendance.service.js");
     const userId = new Types.ObjectId().toString();
-    const entry = await clockIn(userId, "starting day");
+    const entry = await clockIn(userId, { notes: "starting day" });
     expect(entry.userId).toBe(userId);
     expect(entry.clockOut).toBeNull();
     expect(entry.durationMinutes).toBeNull();
@@ -52,6 +52,81 @@ describe("attendance.service", () => {
     const { NotFoundError } = await import("../../lib/errors.js");
     const userId = new Types.ObjectId().toString();
     await expect(clockOut(userId)).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("clockOut within 1hr throws ConflictError", async () => {
+    const { Attendance } = await import("../../models/attendance.model.js");
+    const { clockOut } = await import("./attendance.service.js");
+    const { ConflictError } = await import("../../lib/errors.js");
+    const userId = new Types.ObjectId();
+    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
+    const now = new Date();
+    const date = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
+    await Attendance.create({
+      userId,
+      date,
+      clockIn: tenMinAgo,
+      clockOut: null,
+    });
+    await expect(clockOut(userId.toString())).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it("clockOut after 1hr+ subtracts lunch break from durationMinutes", async () => {
+    const { Attendance } = await import("../../models/attendance.model.js");
+    const { clockOut } = await import("./attendance.service.js");
+    const userId = new Types.ObjectId();
+    const ninetyMinAgo = new Date(Date.now() - 90 * 60 * 1000);
+    const sixtyMinAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
+    const now = new Date();
+    const date = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
+    await Attendance.create({
+      userId,
+      date,
+      clockIn: ninetyMinAgo,
+      lunchStart: sixtyMinAgo,
+      lunchEnd: thirtyMinAgo,
+      clockOut: null,
+    });
+    const result = await clockOut(userId.toString());
+    expect(result.lunchMinutes).toBe(30);
+    // 90 - 30 = 60, allow ±1 minute slack
+    expect(result.durationMinutes).toBeGreaterThanOrEqual(59);
+    expect(result.durationMinutes).toBeLessThanOrEqual(61);
+  });
+
+  it("startLunch + endLunch happy path", async () => {
+    const { Attendance } = await import("../../models/attendance.model.js");
+    const { startLunch, endLunch } = await import("./attendance.service.js");
+    const userId = new Types.ObjectId();
+    const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000);
+    const now = new Date();
+    const date = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
+    await Attendance.create({
+      userId,
+      date,
+      clockIn: fifteenMinAgo,
+      clockOut: null,
+    });
+    const started = await startLunch(userId.toString());
+    expect(started.lunchStart).not.toBeNull();
+    expect(started.lunchEnd).toBeNull();
+    const ended = await endLunch(userId.toString());
+    expect(ended.lunchEnd).not.toBeNull();
+  });
+
+  it("startLunch when no clock-in throws NotFoundError", async () => {
+    const { startLunch } = await import("./attendance.service.js");
+    const { NotFoundError } = await import("../../lib/errors.js");
+    const userId = new Types.ObjectId().toString();
+    await expect(startLunch(userId)).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("clockIn with isRemote=true persists flag", async () => {
+    const { clockIn } = await import("./attendance.service.js");
+    const userId = new Types.ObjectId().toString();
+    const entry = await clockIn(userId, { isRemote: true });
+    expect(entry.isRemote).toBe(true);
   });
 
   it("myMonth aggregates totalMinutes and daysWorked correctly", async () => {

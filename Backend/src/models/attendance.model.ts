@@ -10,6 +10,9 @@ const attendanceSchema = new Schema(
     },
     clockIn: { type: Date, required: true },
     clockOut: { type: Date, default: null },
+    lunchStart: { type: Date, default: null },
+    lunchEnd: { type: Date, default: null },
+    isRemote: { type: Boolean, default: false },
     date: {
       type: String,
       required: true,

@@ -8,7 +8,11 @@ export interface AttendanceEntryResponse {
   date: string;
   clockIn: Date;
   clockOut: Date | null;
+  lunchStart: Date | null;
+  lunchEnd: Date | null;
+  lunchMinutes: number;
   durationMinutes: number | null;
+  isRemote: boolean;
   notes: string | null;
   createdAt: Date;
 }
@@ -19,6 +23,8 @@ export interface MonthSummary {
   daysWorked: number;
 }
 
+const ONE_HOUR_MS = 60 * 60 * 1000;
+
 function todayUtc(now: Date = new Date()): string {
   const y = now.getUTCFullYear();
   const m = String(now.getUTCMonth() + 1).padStart(2, "0");
@@ -26,22 +32,48 @@ function todayUtc(now: Date = new Date()): string {
   return `${y}-${m}-${d}`;
 }
 
-function durationMinutes(clockIn: Date, clockOut: Date | null): number | null {
-  if (!clockOut) return null;
-  const diffMs = clockOut.getTime() - clockIn.getTime();
-  if (diffMs < 0) return 0;
-  return Math.floor(diffMs / 60000);
+export function computeDuration(entry: {
+  clockIn: Date;
+  clockOut: Date | null;
+  lunchStart: Date | null;
+  lunchEnd: Date | null;
+}): { durationMinutes: number | null; lunchMinutes: number } {
+  let lunchMinutes = 0;
+  if (entry.lunchStart && entry.lunchEnd) {
+    const lunchDiff = entry.lunchEnd.getTime() - entry.lunchStart.getTime();
+    lunchMinutes = lunchDiff > 0 ? Math.floor(lunchDiff / 60000) : 0;
+  }
+  if (!entry.clockOut) {
+    return { durationMinutes: null, lunchMinutes };
+  }
+  const diffMs = entry.clockOut.getTime() - entry.clockIn.getTime();
+  const grossMinutes = diffMs > 0 ? Math.floor(diffMs / 60000) : 0;
+  const net = grossMinutes - lunchMinutes;
+  return { durationMinutes: net < 0 ? 0 : net, lunchMinutes };
 }
 
 function toResponse(doc: AttendanceDoc): AttendanceEntryResponse {
   const t = doc as unknown as { createdAt: Date };
+  const lunchStart = doc.lunchStart ?? null;
+  const lunchEnd = doc.lunchEnd ?? null;
+  const clockOut = doc.clockOut ?? null;
+  const { durationMinutes, lunchMinutes } = computeDuration({
+    clockIn: doc.clockIn,
+    clockOut,
+    lunchStart,
+    lunchEnd,
+  });
   return {
     id: doc._id.toString(),
     userId: doc.userId.toString(),
     date: doc.date,
     clockIn: doc.clockIn,
-    clockOut: doc.clockOut ?? null,
-    durationMinutes: durationMinutes(doc.clockIn, doc.clockOut ?? null),
+    clockOut,
+    lunchStart,
+    lunchEnd,
+    lunchMinutes,
+    durationMinutes,
+    isRemote: !!doc.isRemote,
     notes: doc.notes ?? null,
     createdAt: t.createdAt,
   };
@@ -49,7 +81,7 @@ function toResponse(doc: AttendanceDoc): AttendanceEntryResponse {
 
 export async function clockIn(
   userId: string,
-  notes?: string,
+  input: { notes?: string; isRemote?: boolean } = {},
 ): Promise<AttendanceEntryResponse> {
   const now = new Date();
   const date = todayUtc(now);
@@ -66,7 +98,10 @@ export async function clockIn(
       date,
       clockIn: now,
       clockOut: null,
-      notes: notes ?? null,
+      lunchStart: null,
+      lunchEnd: null,
+      isRemote: input.isRemote ?? false,
+      notes: input.notes ?? null,
     });
     return toResponse(created);
   } catch (err) {
@@ -93,10 +128,57 @@ export async function clockOut(
   if (entry.clockOut) {
     throw new ConflictError("Already clocked out today");
   }
+  if (Date.now() - entry.clockIn.getTime() < ONE_HOUR_MS) {
+    throw new ConflictError(
+      "You can only clock out at least 1 hour after clock-in",
+    );
+  }
   entry.clockOut = now;
   if (notes !== undefined) {
     entry.notes = notes;
   }
+  await entry.save();
+  return toResponse(entry);
+}
+
+export async function startLunch(userId: string): Promise<AttendanceEntryResponse> {
+  const now = new Date();
+  const date = todayUtc(now);
+  const entry = await Attendance.findOne({
+    userId: new Types.ObjectId(userId),
+    date,
+  });
+  if (!entry) {
+    throw new NotFoundError("No clock-in today");
+  }
+  if (entry.clockOut) {
+    throw new ConflictError("Already clocked out today");
+  }
+  if (entry.lunchStart) {
+    throw new ConflictError("Lunch already started");
+  }
+  entry.lunchStart = now;
+  await entry.save();
+  return toResponse(entry);
+}
+
+export async function endLunch(userId: string): Promise<AttendanceEntryResponse> {
+  const now = new Date();
+  const date = todayUtc(now);
+  const entry = await Attendance.findOne({
+    userId: new Types.ObjectId(userId),
+    date,
+  });
+  if (!entry) {
+    throw new NotFoundError("No clock-in today");
+  }
+  if (!entry.lunchStart) {
+    throw new ConflictError("Lunch not started");
+  }
+  if (entry.lunchEnd) {
+    throw new ConflictError("Lunch already ended");
+  }
+  entry.lunchEnd = now;
   await entry.save();
   return toResponse(entry);
 }
@@ -120,8 +202,13 @@ export async function myMonth(
   let daysWorked = 0;
   for (const e of entries) {
     if (e.clockOut) {
-      const mins = durationMinutes(e.clockIn, e.clockOut);
-      if (mins !== null) totalMinutes += mins;
+      const { durationMinutes } = computeDuration({
+        clockIn: e.clockIn,
+        clockOut: e.clockOut,
+        lunchStart: e.lunchStart ?? null,
+        lunchEnd: e.lunchEnd ?? null,
+      });
+      if (durationMinutes !== null) totalMinutes += durationMinutes;
       daysWorked += 1;
     }
   }

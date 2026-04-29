@@ -16,7 +16,11 @@ export const AttendanceEntry = z
     date: z.string(),
     clockIn: z.string().datetime(),
     clockOut: z.string().datetime().nullable(),
+    lunchStart: z.string().datetime().nullable(),
+    lunchEnd: z.string().datetime().nullable(),
+    lunchMinutes: z.number().int().nonnegative(),
     durationMinutes: z.number().int().nonnegative().nullable(),
+    isRemote: z.boolean(),
     notes: z.string().nullable().optional(),
     createdAt: z.string().datetime(),
   })
@@ -33,6 +37,7 @@ export const AttendanceMonthResponse = z
 export const ClockInBody = z
   .object({
     notes: z.string().max(500).optional(),
+    isRemote: z.boolean().optional(),
   })
   .openapi("ClockInBody");
 
@@ -41,6 +46,8 @@ export const ClockOutBody = z
     notes: z.string().max(500).optional(),
   })
   .openapi("ClockOutBody");
+
+export const LunchBody = z.object({}).openapi("LunchBody");
 
 const json = (schema: z.ZodTypeAny) => ({ content: { "application/json": { schema } } });
 const ErrorRef = z.object({ code: z.string(), message: z.string() }).openapi("AttendanceErrorRef");
@@ -67,7 +74,33 @@ registry.registerPath({
   responses: {
     200: { description: "Clocked out", ...json(AttendanceEntry) },
     404: { description: "No clock-in today", ...json(ErrorRef) },
-    409: { description: "Already clocked out today", ...json(ErrorRef) },
+    409: { description: "Already clocked out today / less than 1h since clock-in", ...json(ErrorRef) },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/attendance/lunch-start",
+  tags: ["attendance"],
+  security: sec,
+  request: { body: { content: { "application/json": { schema: LunchBody } } } },
+  responses: {
+    200: { description: "Lunch started", ...json(AttendanceEntry) },
+    404: { description: "No clock-in today", ...json(ErrorRef) },
+    409: { description: "Already clocked out / lunch already started", ...json(ErrorRef) },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/attendance/lunch-end",
+  tags: ["attendance"],
+  security: sec,
+  request: { body: { content: { "application/json": { schema: LunchBody } } } },
+  responses: {
+    200: { description: "Lunch ended", ...json(AttendanceEntry) },
+    404: { description: "No clock-in today", ...json(ErrorRef) },
+    409: { description: "Lunch not started / lunch already ended", ...json(ErrorRef) },
   },
 });
 
