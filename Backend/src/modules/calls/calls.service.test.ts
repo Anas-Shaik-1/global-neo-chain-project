@@ -40,15 +40,21 @@ async function makeUser(email: string) {
 }
 
 describe("calls.service", () => {
-  it("initiateCall creates an INVITED session between caller and callee", async () => {
+  it("initiateCall creates an INVITED DIRECT session for 1-1 calls", async () => {
     const { initiateCall } = await import("./calls.service.js");
     const a = await makeUser("a@b.com");
     const b = await makeUser("b@b.com");
-    const out = await initiateCall(a._id.toString(), b._id.toString());
+    const out = await initiateCall(a._id.toString(), [b._id.toString()]);
     expect(out.id).toBeTruthy();
     expect(out.status).toBe("INVITED");
-    expect(out.caller.id).toBe(a._id.toString());
-    expect(out.callee.id).toBe(b._id.toString());
+    expect(out.kind).toBe("DIRECT");
+    expect(out.initiatorId).toBe(a._id.toString());
+    expect(out.participants).toHaveLength(2);
+    const ids = out.participants.map((p) => p.id).sort();
+    expect(ids).toEqual([a._id.toString(), b._id.toString()].sort());
+    // Convenience caller/callee for DIRECT calls.
+    expect(out.caller?.id).toBe(a._id.toString());
+    expect(out.callee?.id).toBe(b._id.toString());
     expect(out.acceptedAt).toBeNull();
     expect(out.endedAt).toBeNull();
     expect(out.endReason).toBeNull();
@@ -59,15 +65,57 @@ describe("calls.service", () => {
     const { initiateCall } = await import("./calls.service.js");
     const a = await makeUser("a@b.com");
     await expect(
-      initiateCall(a._id.toString(), a._id.toString()),
+      initiateCall(a._id.toString(), [a._id.toString()]),
     ).rejects.toMatchObject({ statusCode: 400 });
   });
 
-  it("acceptCall transitions INVITED → ACTIVE for the callee", async () => {
+  it("initiateCall with 0 peers throws", async () => {
+    const { initiateCall } = await import("./calls.service.js");
+    const a = await makeUser("a@b.com");
+    await expect(
+      initiateCall(a._id.toString(), []),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it("initiateCall with 4 peers throws (max 3 peers)", async () => {
+    const { initiateCall } = await import("./calls.service.js");
+    const a = await makeUser("a@b.com");
+    const b = await makeUser("b@b.com");
+    const c = await makeUser("c@b.com");
+    const d = await makeUser("d@b.com");
+    const e = await makeUser("e@b.com");
+    await expect(
+      initiateCall(a._id.toString(), [
+        b._id.toString(),
+        c._id.toString(),
+        d._id.toString(),
+        e._id.toString(),
+      ]),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it("initiateCall with 2 peers creates GROUP kind", async () => {
+    const { initiateCall } = await import("./calls.service.js");
+    const a = await makeUser("a@b.com");
+    const b = await makeUser("b@b.com");
+    const c = await makeUser("c@b.com");
+    const out = await initiateCall(a._id.toString(), [
+      b._id.toString(),
+      c._id.toString(),
+    ]);
+    expect(out.kind).toBe("GROUP");
+    expect(out.participants).toHaveLength(3);
+    expect(out.initiatorId).toBe(a._id.toString());
+    // GROUP responses don't carry the caller/callee convenience fields.
+    expect(out.caller).toBeUndefined();
+    expect(out.callee).toBeUndefined();
+  });
+
+  it("acceptCall transitions INVITED → ACTIVE for an invited peer", async () => {
     const { initiateCall, acceptCall } = await import("./calls.service.js");
     const a = await makeUser("a@b.com");
     const b = await makeUser("b@b.com");
-    const created = await initiateCall(a._id.toString(), b._id.toString());
+    const created = await initiateCall(a._id.toString(), [b._id.toString()]);
     const out = await acceptCall(created.id, b._id.toString());
     expect(out.status).toBe("ACTIVE");
     expect(out.acceptedAt).toBeTruthy();
@@ -78,7 +126,7 @@ describe("calls.service", () => {
     const a = await makeUser("a@b.com");
     const b = await makeUser("b@b.com");
     const c = await makeUser("c@b.com");
-    const created = await initiateCall(a._id.toString(), b._id.toString());
+    const created = await initiateCall(a._id.toString(), [b._id.toString()]);
     await expect(
       endCall(created.id, c._id.toString(), "HANGUP"),
     ).rejects.toMatchObject({ statusCode: 403 });
@@ -90,7 +138,7 @@ describe("calls.service", () => {
     );
     const a = await makeUser("a@b.com");
     const b = await makeUser("b@b.com");
-    const created = await initiateCall(a._id.toString(), b._id.toString());
+    const created = await initiateCall(a._id.toString(), [b._id.toString()]);
     await acceptCall(created.id, b._id.toString());
     const first = await endCall(created.id, a._id.toString(), "HANGUP");
     expect(first.status).toBe("ENDED");
@@ -106,24 +154,26 @@ describe("calls.service", () => {
     const { initiateCall, endCall } = await import("./calls.service.js");
     const a = await makeUser("a@b.com");
     const b = await makeUser("b@b.com");
-    const created = await initiateCall(a._id.toString(), b._id.toString());
+    const created = await initiateCall(a._id.toString(), [b._id.toString()]);
     const out = await endCall(created.id, b._id.toString(), "REJECT");
     expect(out.status).toBe("REJECTED");
     expect(out.endReason).toBe("REJECT");
   });
 
-  it("listMyCalls returns calls where I'm caller or callee, newest first", async () => {
+  it("listMyCalls returns calls where I'm a participant, newest first", async () => {
     const { initiateCall, listMyCalls } = await import("./calls.service.js");
     const a = await makeUser("a@b.com");
     const b = await makeUser("b@b.com");
     const c = await makeUser("c@b.com");
-    await initiateCall(a._id.toString(), b._id.toString());
+    await initiateCall(a._id.toString(), [b._id.toString()]);
     await new Promise((r) => setTimeout(r, 5));
-    await initiateCall(c._id.toString(), a._id.toString());
+    await initiateCall(c._id.toString(), [a._id.toString()]);
     const list = await listMyCalls(a._id.toString(), { limit: 10 });
     expect(list).toHaveLength(2);
     // newest first
-    expect(list[0]!.caller.id).toBe(c._id.toString());
-    expect(list[0]!.callee.id).toBe(a._id.toString());
+    expect(list[0]!.initiatorId).toBe(c._id.toString());
+    expect(
+      list[0]!.participants.some((p) => p.id === a._id.toString()),
+    ).toBe(true);
   });
 });

@@ -156,4 +156,65 @@ describe("chat.service", () => {
       sendMessage(convo.id, a._id.toString(), { body: "   " }),
     ).rejects.toMatchObject({ statusCode: 400 });
   });
+
+  it("createGroup with 3 participants succeeds", async () => {
+    const { createGroup } = await import("./chat.service.js");
+    const a = await makeUser("a@b.com");
+    const b = await makeUser("b@b.com");
+    const c = await makeUser("c@b.com");
+    const out = await createGroup(a._id.toString(), {
+      name: "Project Falcon",
+      participantIds: [b._id.toString(), c._id.toString()],
+    });
+    expect(out.id).toBeTruthy();
+    expect(out.kind).toBe("GROUP");
+    expect(out.name).toBe("Project Falcon");
+    expect(out.createdById).toBe(a._id.toString());
+    expect(out.participants).toHaveLength(3);
+    const ids = out.participants.map((p) => p.id).sort();
+    expect(ids).toEqual(
+      [a._id.toString(), b._id.toString(), c._id.toString()].sort(),
+    );
+  });
+
+  it("createGroup with no name throws ValidationError", async () => {
+    const { createGroup } = await import("./chat.service.js");
+    const a = await makeUser("a@b.com");
+    const b = await makeUser("b@b.com");
+    await expect(
+      createGroup(a._id.toString(), {
+        name: "   ",
+        participantIds: [b._id.toString()],
+      }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it("addGroupMember by non-member throws ForbiddenError", async () => {
+    const { createGroup, addGroupMember } = await import("./chat.service.js");
+    const a = await makeUser("a@b.com");
+    const b = await makeUser("b@b.com");
+    const c = await makeUser("c@b.com");
+    const d = await makeUser("d@b.com");
+    const grp = await createGroup(a._id.toString(), {
+      name: "Pals",
+      participantIds: [b._id.toString()],
+    });
+    await expect(
+      addGroupMember(grp.id, c._id.toString(), d._id.toString()),
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  it("removeGroupMember self-leave succeeds", async () => {
+    const { createGroup, removeGroupMember } = await import("./chat.service.js");
+    const a = await makeUser("a@b.com");
+    const b = await makeUser("b@b.com");
+    const c = await makeUser("c@b.com");
+    const grp = await createGroup(a._id.toString(), {
+      name: "Pals",
+      participantIds: [b._id.toString(), c._id.toString()],
+    });
+    const out = await removeGroupMember(grp.id, b._id.toString(), b._id.toString());
+    expect(out.participants).toHaveLength(2);
+    expect(out.participants.some((p) => p.id === b._id.toString())).toBe(false);
+  });
 });

@@ -27,16 +27,23 @@ export type CallStatus =
 
 export type CallEndReason = "HANGUP" | "REJECT" | "TIMEOUT" | "ERROR";
 
+export type CallKind = "DIRECT" | "GROUP";
+
 export interface CallSession {
   id: string;
-  caller: CallParticipant;
-  callee: CallParticipant;
+  participants: CallParticipant[];
+  initiatorId: string;
+  initiatorName: string;
+  kind: CallKind;
   status: CallStatus;
   startedAt: string;
   acceptedAt: string | null;
   endedAt: string | null;
   durationSeconds: number | null;
   endReason: CallEndReason | null;
+  // Convenience for DIRECT calls only.
+  caller?: CallParticipant;
+  callee?: CallParticipant;
 }
 
 export const callKeys = {
@@ -47,8 +54,8 @@ export const callKeys = {
 export function useInitiateCall() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (calleeId: string) => {
-      const res = await api().post("/calls", { calleeId });
+    mutationFn: async (peerIds: string[]) => {
+      const res = await api().post("/calls", { peerIds });
       return res.data as CallSession;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: callKeys.history }),

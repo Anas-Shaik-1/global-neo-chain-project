@@ -33,11 +33,20 @@ export function disconnectCallsSocket(): void {
   }
 }
 
+export type CallKind = "DIRECT" | "GROUP";
+
 export interface IncomingCallPayload {
   callId: string;
   callerId: string;
   callerName: string;
+  /** Present from the multi-peer flow; falls back to "DIRECT" for legacy 1-1. */
+  kind?: CallKind;
+  /** All participants of the call (server-supplied for GROUP). */
+  peerIds?: string[];
+  /** WebRTC offer signal targeted at this peer. */
   offer: unknown;
+  /** Same as `offer` for multi-peer; kept distinct for clarity. */
+  signal?: unknown;
 }
 
 export interface CallAcceptedPayload {
@@ -56,6 +65,23 @@ export interface IceCandidatePayload {
 
 export interface CallEndedPayload {
   callId: string;
+}
+
+/** Multi-peer mesh: a peer-to-peer signal arrived from one participant. */
+export interface PeerSignalPayload {
+  callId: string;
+  fromUserId: string;
+  signal: unknown;
+}
+
+export interface PeerAcceptedPayload {
+  callId: string;
+  userId: string;
+}
+
+export interface PeerLeftPayload {
+  callId: string;
+  userId: string;
 }
 
 export function onIncomingCall(
@@ -113,6 +139,40 @@ export function onCallEnded(
   };
 }
 
+export function onPeerSignal(
+  cb: (payload: PeerSignalPayload) => void,
+): () => void {
+  if (!socket) return () => undefined;
+  const handler = (p: PeerSignalPayload) => cb(p);
+  socket.on("call:peer-signal", handler);
+  return () => {
+    socket?.off("call:peer-signal", handler);
+  };
+}
+
+export function onPeerAccepted(
+  cb: (payload: PeerAcceptedPayload) => void,
+): () => void {
+  if (!socket) return () => undefined;
+  const handler = (p: PeerAcceptedPayload) => cb(p);
+  socket.on("call:peer-accepted", handler);
+  return () => {
+    socket?.off("call:peer-accepted", handler);
+  };
+}
+
+export function onPeerLeft(
+  cb: (payload: PeerLeftPayload) => void,
+): () => void {
+  if (!socket) return () => undefined;
+  const handler = (p: PeerLeftPayload) => cb(p);
+  socket.on("call:peer-left", handler);
+  return () => {
+    socket?.off("call:peer-left", handler);
+  };
+}
+
+// ── Emits ───────────────────────────────────────────────────────────────────
 export function emitInvite(payload: {
   callId: string;
   calleeId: string;
@@ -146,4 +206,31 @@ export function emitIceCandidate(payload: {
 
 export function emitEnd(payload: { callId: string; peerUserId: string }): void {
   socket?.emit("call:end", payload);
+}
+
+// Multi-peer (mesh) emits.
+export function emitInviteMulti(payload: {
+  callId: string;
+  peerId: string;
+  peerIds: string[];
+  signal: unknown;
+  kind?: CallKind;
+}): void {
+  socket?.emit("call:invite-multi", payload);
+}
+
+export function emitPeerSignal(payload: {
+  callId: string;
+  peerUserId: string;
+  signal: unknown;
+}): void {
+  socket?.emit("call:peer-signal", payload);
+}
+
+export function emitAcceptMulti(payload: { callId: string }): void {
+  socket?.emit("call:accept-multi", payload);
+}
+
+export function emitEndMulti(payload: { callId: string }): void {
+  socket?.emit("call:end-multi", payload);
 }

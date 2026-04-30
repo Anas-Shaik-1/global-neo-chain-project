@@ -16,6 +16,9 @@ export const ParticipantSummary = z
 export const ConversationResponse = z
   .object({
     id: z.string(),
+    kind: z.enum(["DM", "GROUP"]),
+    name: z.string().nullable(),
+    createdById: z.string().nullable(),
     participants: z.array(ParticipantSummary),
     lastMessageAt: z.string().datetime().nullable(),
     lastMessagePreview: z.string().nullable(),
@@ -57,6 +60,19 @@ export const SendMessageBody = z
     body: z.string().min(1).max(4000),
   })
   .openapi("SendMessageBody");
+
+export const CreateGroupBody = z
+  .object({
+    name: z.string().min(1).max(100),
+    participantIds: z.array(objectIdString).min(1),
+  })
+  .openapi("CreateGroupBody");
+
+export const AddGroupMemberBody = z
+  .object({
+    userId: objectIdString,
+  })
+  .openapi("AddGroupMemberBody");
 
 const json = (schema: z.ZodTypeAny) => ({ content: { "application/json": { schema } } });
 const ErrorRef = z.object({ code: z.string(), message: z.string() }).openapi("ChatErrorRef");
@@ -142,6 +158,51 @@ registry.registerPath({
   },
   responses: {
     201: { description: "Created", ...json(MessageResponse) },
+    400: { description: "Validation failed", ...json(ErrorRef) },
+    403: { description: "Forbidden", ...json(ErrorRef) },
+    404: { description: "Not found", ...json(ErrorRef) },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/chat/groups",
+  tags: ["chat"],
+  security: sec,
+  request: { body: { content: { "application/json": { schema: CreateGroupBody } } } },
+  responses: {
+    201: { description: "Created", ...json(ConversationResponse) },
+    400: { description: "Validation failed", ...json(ErrorRef) },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/chat/conversations/{id}/members",
+  tags: ["chat"],
+  security: sec,
+  request: {
+    params: z.object({ id: objectIdString }),
+    body: { content: { "application/json": { schema: AddGroupMemberBody } } },
+  },
+  responses: {
+    200: { description: "OK", ...json(ConversationResponse) },
+    400: { description: "Validation failed", ...json(ErrorRef) },
+    403: { description: "Forbidden", ...json(ErrorRef) },
+    404: { description: "Not found", ...json(ErrorRef) },
+  },
+});
+
+registry.registerPath({
+  method: "delete",
+  path: "/chat/conversations/{id}/members/{userId}",
+  tags: ["chat"],
+  security: sec,
+  request: {
+    params: z.object({ id: objectIdString, userId: objectIdString }),
+  },
+  responses: {
+    200: { description: "OK", ...json(ConversationResponse) },
     400: { description: "Validation failed", ...json(ErrorRef) },
     403: { description: "Forbidden", ...json(ErrorRef) },
     404: { description: "Not found", ...json(ErrorRef) },

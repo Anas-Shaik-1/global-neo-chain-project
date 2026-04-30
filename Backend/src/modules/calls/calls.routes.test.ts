@@ -51,17 +51,20 @@ async function seedAndToken(email: string) {
 }
 
 describe("/calls", () => {
-  it("POST /calls creates a call session (201)", async () => {
+  it("POST /calls creates a DIRECT call session (201)", async () => {
     const a = await seedAndToken("a@b.com");
     const b = await seedAndToken("b@b.com");
     const app = await buildApp();
     const res = await request(app)
       .post("/calls")
       .set("Authorization", `Bearer ${a.token}`)
-      .send({ calleeId: b.id });
+      .send({ peerIds: [b.id] });
     expect(res.status).toBe(201);
     expect(res.body.id).toBeTruthy();
     expect(res.body.status).toBe("INVITED");
+    expect(res.body.kind).toBe("DIRECT");
+    expect(res.body.initiatorId).toBe(a.id);
+    expect(res.body.participants).toHaveLength(2);
     expect(res.body.caller.id).toBe(a.id);
     expect(res.body.callee.id).toBe(b.id);
   });
@@ -75,12 +78,12 @@ describe("/calls", () => {
     await request(app)
       .post("/calls")
       .set("Authorization", `Bearer ${a.token}`)
-      .send({ calleeId: b.id });
+      .send({ peerIds: [b.id] });
     await new Promise((r) => setTimeout(r, 5));
     await request(app)
       .post("/calls")
       .set("Authorization", `Bearer ${c.token}`)
-      .send({ calleeId: a.id });
+      .send({ peerIds: [a.id] });
 
     const res = await request(app)
       .get("/calls/me")
@@ -89,8 +92,12 @@ describe("/calls", () => {
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body).toHaveLength(2);
     // newest first
-    expect(res.body[0].caller.id).toBe(c.id);
-    expect(res.body[0].callee.id).toBe(a.id);
+    expect(res.body[0].initiatorId).toBe(c.id);
+    expect(
+      res.body[0].participants.some(
+        (p: { id: string }) => p.id === a.id,
+      ),
+    ).toBe(true);
   });
 
   it("POST /calls/:id/end sets endedAt and updates status", async () => {
@@ -100,7 +107,7 @@ describe("/calls", () => {
     const created = await request(app)
       .post("/calls")
       .set("Authorization", `Bearer ${a.token}`)
-      .send({ calleeId: b.id });
+      .send({ peerIds: [b.id] });
     expect(created.status).toBe(201);
     const res = await request(app)
       .post(`/calls/${created.body.id}/end`)

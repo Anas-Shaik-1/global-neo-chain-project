@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowDownLeft, ArrowUpRight, Phone } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Phone, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -17,7 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useCallHistory, type CallSession, type CallStatus } from "../api/hooks";
-import { useCall } from "../CallProvider";
+import { useCall, type PeerInfo } from "../CallProvider";
 import { NewCallDialog } from "../components/NewCallDialog";
 
 function initials(name: string): string {
@@ -63,19 +63,33 @@ function formatStartedAt(iso: string): string {
 }
 
 function CallRow({ call, meId }: { call: CallSession; meId: string | undefined }) {
-  const outgoing = call.caller.id === meId;
-  const peer = outgoing ? call.callee : call.caller;
+  const outgoing = call.initiatorId === meId;
+  const isGroup = call.kind === "GROUP";
+  const otherParticipants = call.participants.filter((p) => p.id !== meId);
+  const headlinePeer = otherParticipants[0] ?? call.participants[0];
+  const peerLabel = isGroup
+    ? otherParticipants.map((p) => p.name).join(", ")
+    : headlinePeer?.name ?? "Unknown";
+
   return (
     <TableRow>
       <TableCell>
         <div className="flex items-center gap-2">
-          <Avatar className="h-8 w-8">
-            {peer.avatarUrl ? <AvatarImage src={peer.avatarUrl} alt="" /> : null}
-            <AvatarFallback className="text-[10px]">
-              {initials(peer.name)}
-            </AvatarFallback>
-          </Avatar>
-          <span className="font-medium">{peer.name}</span>
+          {isGroup ? (
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
+              <Users className="h-3.5 w-3.5 text-muted-foreground" />
+            </div>
+          ) : (
+            <Avatar className="h-8 w-8">
+              {headlinePeer?.avatarUrl ? (
+                <AvatarImage src={headlinePeer.avatarUrl} alt="" />
+              ) : null}
+              <AvatarFallback className="text-[10px]">
+                {initials(headlinePeer?.name ?? "?")}
+              </AvatarFallback>
+            </Avatar>
+          )}
+          <span className="font-medium">{peerLabel}</span>
         </div>
       </TableCell>
       <TableCell>
@@ -89,6 +103,11 @@ function CallRow({ call, meId }: { call: CallSession; meId: string | undefined }
             <ArrowDownLeft className="h-3.5 w-3.5" />
           )}
           {outgoing ? "Outgoing" : "Incoming"}
+          {isGroup && (
+            <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium">
+              GROUP
+            </span>
+          )}
         </span>
       </TableCell>
       <TableCell>
@@ -114,8 +133,8 @@ export function CallsHistoryPage() {
     const t = search.trim().toLowerCase();
     if (!t) return all;
     return all.filter((c) => {
-      const peer = c.caller.id === me?.id ? c.callee : c.caller;
-      return peer.name.toLowerCase().includes(t);
+      const others = c.participants.filter((p) => p.id !== me?.id);
+      return others.some((p) => p.name.toLowerCase().includes(t));
     });
   }, [history.data, search, me?.id]);
 
@@ -181,9 +200,12 @@ export function CallsHistoryPage() {
         open={showNew}
         onOpenChange={setShowNew}
         meId={me?.id}
-        onPick={(userId, userName) => {
+        onPick={(peerInfos: PeerInfo[]) => {
           setShowNew(false);
-          void start(userId, userName);
+          void start(
+            peerInfos.map((p) => p.userId),
+            peerInfos,
+          );
         }}
       />
     </PageContainer>

@@ -4,10 +4,13 @@ import {
   Image as ImageIcon,
   Paperclip,
   Phone,
+  UserMinus,
+  Users,
   X,
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,9 +20,14 @@ import {
   FormField,
   FormItem,
 } from "@/components/ui/form";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { useCall } from "@/features/calls/CallProvider";
-import type { ChatMessage, Conversation } from "../api/hooks";
+import {
+  useRemoveGroupMember,
+  type ChatMessage,
+  type Conversation,
+} from "../api/hooks";
 import { ChatMessageSchema, type ChatMessageValues } from "../schemas";
 
 interface Props {
@@ -66,14 +74,14 @@ function isImageMime(mime: string | null | undefined): boolean {
   return !!mime && mime.startsWith("image/");
 }
 
-function otherName(c: Conversation, meId: string | undefined): string {
-  const other = meId
-    ? c.participants.find((p) => p.id !== meId)
-    : c.participants[0];
-  return other?.name ?? "Conversation";
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  const first = parts[0]?.[0] ?? "";
+  const last = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? "" : "";
+  return (first + last).toUpperCase() || "?";
 }
 
-function otherParticipant(
+function dmOther(
   c: Conversation,
   meId: string | undefined,
 ): { id: string; name: string } | null {
@@ -83,12 +91,19 @@ function otherParticipant(
   return other ? { id: other.id, name: other.name } : null;
 }
 
+function headerName(c: Conversation, meId: string | undefined): string {
+  if (c.kind === "GROUP") return c.name ?? "Group";
+  const other = dmOther(c, meId);
+  return other?.name ?? "Conversation";
+}
+
 interface MessageBubbleProps {
   message: ChatMessage;
   mine: boolean;
+  showAuthor: boolean;
 }
 
-function MessageBubble({ message, mine }: MessageBubbleProps) {
+function MessageBubble({ message, mine, showAuthor }: MessageBubbleProps) {
   const hasAttachment = !!message.attachmentUrl;
   const isImage = hasAttachment && isImageMime(message.attachmentMimeType);
   const hasBody = (message.body ?? "").trim().length > 0;
@@ -97,6 +112,11 @@ function MessageBubble({ message, mine }: MessageBubbleProps) {
     <div
       className={cn("flex flex-col gap-1", mine ? "items-end" : "items-start")}
     >
+      {showAuthor && !mine && (
+        <span className="px-1 text-[10px] font-medium text-muted-foreground">
+          {message.authorName ?? "Unknown"}
+        </span>
+      )}
       <div
         className={cn(
           "flex max-w-[75%] flex-col gap-2 rounded-2xl px-3 py-2 text-sm",
@@ -159,6 +179,99 @@ function MessageBubble({ message, mine }: MessageBubbleProps) {
   );
 }
 
+interface MembersSheetProps {
+  conversation: Conversation;
+  meId: string | undefined;
+}
+
+function MembersSheet({ conversation, meId }: MembersSheetProps) {
+  const removeMember = useRemoveGroupMember(conversation.id);
+  const isCreator = !!meId && conversation.createdById === meId;
+
+  return (
+    <Sheet>
+      <SheetTrigger asChild>
+        <button
+          type="button"
+          className="text-left"
+          aria-label="View group members"
+        >
+          <div className="text-sm font-medium hover:underline">
+            {conversation.name ?? "Group"}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {conversation.participants.length} members
+          </div>
+        </button>
+      </SheetTrigger>
+      <SheetContent side="right" className="overflow-y-auto">
+        <div className="flex flex-col gap-4">
+          <div>
+            <div className="text-xs uppercase tracking-wider text-muted-foreground">
+              Group
+            </div>
+            <div className="font-display text-lg font-semibold">
+              {conversation.name ?? "Group"}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {conversation.participants.length} members
+            </div>
+          </div>
+          <ul className="flex flex-col gap-1">
+            {conversation.participants.map((p) => {
+              const canRemove = isCreator && p.id !== meId;
+              return (
+                <li
+                  key={p.id}
+                  className="flex items-center gap-3 rounded-md border border-border px-3 py-2"
+                >
+                  <Avatar className="h-8 w-8 shrink-0">
+                    {p.avatarUrl ? (
+                      <AvatarImage src={p.avatarUrl} alt={p.name} />
+                    ) : null}
+                    <AvatarFallback className="text-xs">
+                      {initials(p.name)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">
+                      {p.name}
+                      {p.id === meId && (
+                        <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                          (you)
+                        </span>
+                      )}
+                      {p.id === conversation.createdById && (
+                        <span className="ml-1.5 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                          Creator
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {canRemove && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void removeMember.mutateAsync(p.id);
+                      }}
+                      disabled={removeMember.isPending}
+                      aria-label={`Remove ${p.name} from group`}
+                      title="Remove from group"
+                      className="flex h-8 w-8 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <UserMinus className="h-4 w-4" />
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 export function MessageThread({
   conversation,
   meId,
@@ -170,7 +283,8 @@ export function MessageThread({
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const call = useCall();
-  const peer = otherParticipant(conversation, meId);
+  const isGroup = conversation.kind === "GROUP";
+  const dmPeer = isGroup ? null : dmOther(conversation, meId);
 
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingPreviewUrl, setPendingPreviewUrl] = useState<string | null>(null);
@@ -239,25 +353,60 @@ export function MessageThread({
   const ordered = [...messages].reverse();
   const canSend = !isSending && (draft.trim().length > 0 || !!pendingFile);
 
+  function startGroupCall() {
+    if (!isGroup) return;
+    const peers = conversation.participants
+      .filter((p) => p.id !== meId)
+      .slice(0, 3); // mesh max 4 total
+    if (peers.length === 0) return;
+    void call.start(
+      peers.map((p) => p.id),
+      peers.map((p) => ({ userId: p.id, name: p.name })),
+    );
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-        <div>
-          <div className="text-sm font-medium">{otherName(conversation, meId)}</div>
-          <div className="text-xs text-muted-foreground">Direct message</div>
-        </div>
-        {peer && (
-          <button
-            type="button"
-            onClick={() => {
-              void call.start(peer.id, peer.name);
-            }}
-            aria-label={`Call ${peer.name}`}
-            title={`Call ${peer.name}`}
-            className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            <Phone className="h-4 w-4" />
-          </button>
+        {isGroup ? (
+          <div className="flex min-w-0 items-center gap-2">
+            <Users className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <MembersSheet conversation={conversation} meId={meId} />
+          </div>
+        ) : (
+          <div>
+            <div className="text-sm font-medium">
+              {headerName(conversation, meId)}
+            </div>
+            <div className="text-xs text-muted-foreground">Direct message</div>
+          </div>
+        )}
+        {isGroup ? (
+          conversation.participants.length > 1 && (
+            <button
+              type="button"
+              onClick={startGroupCall}
+              aria-label="Start group call"
+              title="Start group call"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <Phone className="h-4 w-4" />
+            </button>
+          )
+        ) : (
+          dmPeer && (
+            <button
+              type="button"
+              onClick={() => {
+                void call.start([dmPeer.id], [{ userId: dmPeer.id, name: dmPeer.name }]);
+              }}
+              aria-label={`Call ${dmPeer.name}`}
+              title={`Call ${dmPeer.name}`}
+              className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <Phone className="h-4 w-4" />
+            </button>
+          )
         )}
       </div>
 
@@ -273,11 +422,17 @@ export function MessageThread({
             No messages yet. Say hi.
           </div>
         ) : (
-          ordered.map((m) => {
+          ordered.map((m, idx) => {
             const mine = m.authorId === meId;
+            // For groups: show author name above each non-mine message, but
+            // only when the previous message is from a different author (or
+            // this is the first message). Avoids redundant labels in runs.
+            const prev = ordered[idx - 1];
+            const isAuthorChange = !prev || prev.authorId !== m.authorId;
+            const showAuthor = isGroup && !mine && isAuthorChange;
             return (
               <div key={m.id} className="flex flex-col gap-1">
-                <MessageBubble message={m} mine={mine} />
+                <MessageBubble message={m} mine={mine} showAuthor={showAuthor} />
                 <div
                   className={cn(
                     "text-[10px] text-muted-foreground",

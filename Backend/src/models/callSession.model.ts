@@ -12,19 +12,31 @@ export type CallStatus = (typeof CALL_STATUSES)[number];
 export const CALL_END_REASONS = ["HANGUP", "REJECT", "TIMEOUT", "ERROR"] as const;
 export type CallEndReason = (typeof CALL_END_REASONS)[number];
 
+export const CALL_KINDS = ["DIRECT", "GROUP"] as const;
+export type CallKind = (typeof CALL_KINDS)[number];
+
+// Call session: 2..N participants connected via mesh WebRTC. For 1-1 calls
+// (kind="DIRECT") participantIds has 2 entries (initiator + the other person).
+// For group calls (kind="GROUP") participantIds has 3..4 entries — mesh
+// topology means we keep this small (documented MVP cap of 4 total).
 const callSessionSchema = new Schema(
   {
-    callerId: {
+    participantIds: {
+      type: [{ type: Schema.Types.ObjectId, ref: "User", required: true }],
+      required: true,
+      index: true,
+    },
+    initiatorId: {
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true,
       index: true,
     },
-    calleeId: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
+    kind: {
+      type: String,
+      enum: CALL_KINDS,
       required: true,
-      index: true,
+      default: "DIRECT",
     },
     status: {
       type: String,
@@ -44,8 +56,8 @@ const callSessionSchema = new Schema(
   { timestamps: { createdAt: true, updatedAt: false } },
 );
 
-callSessionSchema.index({ callerId: 1, createdAt: -1 });
-callSessionSchema.index({ calleeId: 1, createdAt: -1 });
+callSessionSchema.index({ initiatorId: 1, createdAt: -1 });
+callSessionSchema.index({ participantIds: 1, createdAt: -1 });
 
 export type CallSessionDoc = InferSchemaType<typeof callSessionSchema> & {
   _id: Types.ObjectId;

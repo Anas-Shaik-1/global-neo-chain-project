@@ -163,6 +163,44 @@ describe("/chat", () => {
     expect(res.body.attachmentSize).toBe(Buffer.from("PNGDATA").length);
   });
 
+  it("POST /chat/groups 201 creates a group with all members", async () => {
+    const a = await seedAndToken("a@b.com");
+    const b = await seedAndToken("b@b.com");
+    const c = await seedAndToken("c@b.com");
+    const app = await buildApp();
+    const res = await request(app)
+      .post("/chat/groups")
+      .set("Authorization", `Bearer ${a.token}`)
+      .send({ name: "Squad", participantIds: [b.id, c.id] });
+    expect(res.status).toBe(201);
+    expect(res.body.kind).toBe("GROUP");
+    expect(res.body.name).toBe("Squad");
+    expect(res.body.createdById).toBe(a.id);
+    expect(res.body.participants).toHaveLength(3);
+    const ids = res.body.participants.map((p: { id: string }) => p.id).sort();
+    expect(ids).toEqual([a.id, b.id, c.id].sort());
+  });
+
+  it("POST /chat/conversations/:id/members 200 adds a member", async () => {
+    const a = await seedAndToken("a@b.com");
+    const b = await seedAndToken("b@b.com");
+    const c = await seedAndToken("c@b.com");
+    const app = await buildApp();
+    const grp = await request(app)
+      .post("/chat/groups")
+      .set("Authorization", `Bearer ${a.token}`)
+      .send({ name: "Squad", participantIds: [b.id] });
+    expect(grp.status).toBe(201);
+    const res = await request(app)
+      .post(`/chat/conversations/${grp.body.id}/members`)
+      .set("Authorization", `Bearer ${a.token}`)
+      .send({ userId: c.id });
+    expect(res.status).toBe(200);
+    expect(res.body.participants).toHaveLength(3);
+    const ids = res.body.participants.map((p: { id: string }) => p.id).sort();
+    expect(ids).toEqual([a.id, b.id, c.id].sort());
+  });
+
   it("GET /chat/conversations lists my conversations sorted by lastMessageAt desc", async () => {
     const a = await seedAndToken("a@b.com");
     const b = await seedAndToken("b@b.com");

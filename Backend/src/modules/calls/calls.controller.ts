@@ -14,8 +14,8 @@ export async function postCreateCall(
 ) {
   try {
     const me = requireUser(req);
-    const body = req.validated as { calleeId: string };
-    const out = await svc.initiateCall(me.id, body.calleeId);
+    const body = req.validated as { peerIds: string[] };
+    const out = await svc.initiateCall(me.id, body.peerIds);
     res.status(201).json(out);
   } catch (err) {
     next(err);

@@ -1,21 +1,43 @@
 import { Schema, model, type InferSchemaType, type Model, Types } from "mongoose";
 
-// DM conversation. For MVP, exactly two participants per conversation
-// (validated in the service layer). `participantIds` is stored sorted, and a
-// derived `pairKey` of `min:max` user-id pair gives a unique compound index
-// to prevent duplicate DM conversations between the same two people.
+export const CONVERSATION_KINDS = ["DM", "GROUP"] as const;
+export type ConversationKind = (typeof CONVERSATION_KINDS)[number];
+
+// Conversation: either a 2-person DM (kind="DM") or an N-person group
+// (kind="GROUP"). For DMs, `participantIds` is stored sorted, and a derived
+// `pairKey` of `min:max` user-id pair gives a unique sparse index to prevent
+// duplicate DMs between the same pair. Groups have pairKey=null and are not
+// deduped — multiple groups between the same set of people are allowed.
 const conversationSchema = new Schema(
   {
+    kind: {
+      type: String,
+      enum: CONVERSATION_KINDS,
+      required: true,
+      default: "DM",
+      index: true,
+    },
+    name: {
+      type: String,
+      default: null,
+      maxlength: 100,
+    },
+    createdById: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
     participantIds: {
       type: [{ type: Schema.Types.ObjectId, ref: "User", required: true }],
       required: true,
       index: true,
     },
+    // Sparse so that GROUP docs with pairKey=null don't violate uniqueness.
     pairKey: {
       type: String,
-      required: true,
+      default: null,
+      sparse: true,
       unique: true,
-      index: true,
     },
     lastMessageAt: { type: Date, default: null, index: true },
     lastMessagePreview: { type: String, default: null, maxlength: 100 },

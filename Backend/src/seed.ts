@@ -1,6 +1,8 @@
 import bcrypt from "bcrypt";
 import { connectDb, disconnectDb } from "./db/index.js";
 import { User, type Role } from "./models/user.model.js";
+import { Conversation } from "./models/conversation.model.js";
+import { CallSession } from "./models/callSession.model.js";
 import { config } from "./config/index.js";
 import { logger } from "./lib/logger.js";
 
@@ -90,6 +92,54 @@ async function main() {
       { count: pmMigration.modifiedCount },
       "migrated legacy role=PM users to role=EMPLOYEE + isProjectManager=true",
     );
+  }
+
+  // Backfill: pre-existing Conversation docs from before group-chat support
+  // didn't have a `kind` field. Default them to DM. Idempotent.
+  const convoBackfill = await Conversation.updateMany(
+    { kind: { $exists: false } },
+    { $set: { kind: "DM" } },
+  );
+  if (convoBackfill.modifiedCount > 0) {
+    logger.info(
+      { count: convoBackfill.modifiedCount },
+      "backfilled kind=DM on legacy Conversation docs",
+    );
+  }
+
+  // Backfill: pre-existing CallSession docs from before group-call support
+  // used a 2-field {callerId, calleeId} shape. Convert to the new
+  // {participantIds[], initiatorId, kind} shape. Idempotent: only acts on
+  // docs that still have a callerId field. Uses the raw collection driver
+  // because the schema no longer maps callerId/calleeId.
+  try {
+    const legacyCalls = await CallSession.collection
+      .find({ callerId: { $exists: true } })
+      .toArray();
+    if (legacyCalls.length > 0) {
+      for (const c of legacyCalls) {
+        const callerId = (c as { callerId?: unknown }).callerId;
+        const calleeId = (c as { calleeId?: unknown }).calleeId;
+        if (!callerId || !calleeId) continue;
+        await CallSession.collection.updateOne(
+          { _id: c._id },
+          {
+            $set: {
+              participantIds: [callerId, calleeId],
+              initiatorId: callerId,
+              kind: "DIRECT",
+            },
+            $unset: { callerId: "", calleeId: "" },
+          },
+        );
+      }
+      logger.info(
+        { count: legacyCalls.length },
+        "migrated legacy CallSession docs to participantIds[]/initiatorId/kind shape",
+      );
+    }
+  } catch (err) {
+    logger.warn({ err }, "CallSession legacy backfill skipped (collection may not exist yet)");
   }
 
   for (const u of DEMO_USERS) {

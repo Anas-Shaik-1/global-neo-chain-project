@@ -107,3 +107,50 @@ export async function postMessageWithAttachment(
     next(err);
   }
 }
+
+export async function postCreateGroup(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const me = requireUser(req);
+    const body = req.validated as { name: string; participantIds: string[] };
+    const out = await svc.createGroup(me.id, body);
+    res.status(201).json(out);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function postAddGroupMember(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const me = requireUser(req);
+    const id = req.params.id as string;
+    const body = req.validated as { userId: string };
+    const out = await svc.addGroupMember(id, me.id, body.userId);
+    res.json(out);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deleteGroupMember(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const me = requireUser(req);
+    const id = req.params.id as string;
+    const userId = req.params.userId as string;
+    const out = await svc.removeGroupMember(id, me.id, userId);
+    res.json(out);
+  } catch (err) {
+    next(err);
+  }
+}

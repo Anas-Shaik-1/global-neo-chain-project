@@ -47,6 +47,9 @@ export function MessagesPage() {
     const t = search.trim().toLowerCase();
     if (!t) return all;
     return all.filter((c) => {
+      if (c.kind === "GROUP") {
+        return (c.name ?? "").toLowerCase().includes(t);
+      }
       const other = c.participants.find((p) => p.id !== me?.id) ?? c.participants[0];
       return (other?.name ?? "").toLowerCase().includes(t);
     });

@@ -3,6 +3,7 @@ import {
   CallSession,
   type CallSessionDoc,
   type CallEndReason,
+  type CallKind,
   type CallStatus,
 } from "../../models/callSession.model.js";
 import { User } from "../../models/user.model.js";
@@ -20,14 +21,28 @@ export interface CallParticipantSummary {
 
 export interface CallSessionResponseShape {
   id: string;
-  caller: CallParticipantSummary;
-  callee: CallParticipantSummary;
+  /** All participants of the call (initiator included). */
+  participants: CallParticipantSummary[];
+  /** The user who initiated the call. */
+  initiatorId: string;
+  initiatorName: string;
+  kind: CallKind;
   status: CallStatus;
   startedAt: Date;
   acceptedAt: Date | null;
   endedAt: Date | null;
   durationSeconds: number | null;
   endReason: CallEndReason | null;
+  /**
+   * Convenience for legacy 1-1 UIs: only present for DIRECT calls.
+   * Always equals the initiator.
+   */
+  caller?: CallParticipantSummary;
+  /**
+   * Convenience for legacy 1-1 UIs: only present for DIRECT calls.
+   * The non-initiator participant.
+   */
+  callee?: CallParticipantSummary;
 }
 
 async function buildUserMap(
@@ -54,12 +69,20 @@ async function buildUserMap(
   return map;
 }
 
+function unknown(id: string): CallParticipantSummary {
+  return { id, name: "Unknown", avatarUrl: null };
+}
+
 export function denormalizeCall(
   s: CallSessionDoc,
   users: Map<string, CallParticipantSummary>,
 ): CallSessionResponseShape {
-  const callerKey = s.callerId.toString();
-  const calleeKey = s.calleeId.toString();
+  const initiatorKey = s.initiatorId.toString();
+  const initiator = users.get(initiatorKey) ?? unknown(initiatorKey);
+  const participants = s.participantIds.map((id) => {
+    const k = id.toString();
+    return users.get(k) ?? unknown(k);
+  });
   const acceptedAt = s.acceptedAt ?? null;
   const endedAt = s.endedAt ?? null;
   let durationSeconds: number | null = null;
@@ -69,20 +92,13 @@ export function denormalizeCall(
       Math.round((endedAt.getTime() - acceptedAt.getTime()) / 1000),
     );
   }
-  return {
+  const kind = (s.kind ?? "DIRECT") as CallKind;
+  const out: CallSessionResponseShape = {
     id: s._id.toString(),
-    caller:
-      users.get(callerKey) ?? {
-        id: callerKey,
-        name: "Unknown",
-        avatarUrl: null,
-      },
-    callee:
-      users.get(calleeKey) ?? {
-        id: calleeKey,
-        name: "Unknown",
-        avatarUrl: null,
-      },
+    participants,
+    initiatorId: initiatorKey,
+    initiatorName: initiator.name,
+    kind,
     status: s.status as CallStatus,
     startedAt: s.startedAt,
     acceptedAt,
@@ -90,32 +106,67 @@ export function denormalizeCall(
     durationSeconds,
     endReason: (s.endReason ?? null) as CallEndReason | null,
   };
+  if (kind === "DIRECT") {
+    // Provide caller/callee convenience fields for the legacy 1-1 UI.
+    const other =
+      participants.find((p) => p.id !== initiatorKey) ?? participants[1] ?? initiator;
+    out.caller = initiator;
+    out.callee = other;
+  }
+  return out;
 }
 
 export async function initiateCall(
-  callerId: string,
-  calleeId: string,
+  initiatorId: string,
+  peerIds: string[],
 ): Promise<CallSessionResponseShape> {
-  if (callerId === calleeId) {
-    throw new ValidationError("Cannot call yourself");
+  if (!Array.isArray(peerIds) || peerIds.length === 0) {
+    throw new ValidationError("At least one peer required");
   }
-  if (!Types.ObjectId.isValid(calleeId)) {
-    throw new ValidationError("calleeId must be a valid id");
+  if (peerIds.length > 3) {
+    throw new ValidationError("Group calls support up to 4 participants");
   }
-  const callee = await User.findById(calleeId).select("_id isActive").lean();
-  if (!callee) throw new NotFoundError("User");
-  if (callee.isActive === false) {
-    throw new ValidationError("Callee is not active");
+  if (peerIds.some((id) => id === initiatorId)) {
+    throw new ValidationError("Cannot include yourself as peer");
+  }
+  // De-dup: forbid duplicate peer ids in input.
+  const unique = new Set(peerIds);
+  if (unique.size !== peerIds.length) {
+    throw new ValidationError("Duplicate peer ids");
+  }
+  for (const id of peerIds) {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new ValidationError("peerIds must contain valid ids");
+    }
+  }
+  if (!Types.ObjectId.isValid(initiatorId)) {
+    throw new ValidationError("initiatorId must be a valid id");
+  }
+
+  const allIds = [initiatorId, ...peerIds];
+  const users = await User.find({
+    _id: { $in: allIds.map((id) => new Types.ObjectId(id)) },
+  })
+    .select("_id isActive")
+    .lean();
+  if (users.length !== allIds.length) {
+    throw new ValidationError("One or more peers don't exist");
+  }
+  for (const u of users) {
+    if (u.isActive === false) {
+      throw new ValidationError("One or more peers are inactive");
+    }
   }
 
   const created = await CallSession.create({
-    callerId: new Types.ObjectId(callerId),
-    calleeId: new Types.ObjectId(calleeId),
+    participantIds: allIds.map((id) => new Types.ObjectId(id)),
+    initiatorId: new Types.ObjectId(initiatorId),
+    kind: peerIds.length === 1 ? "DIRECT" : "GROUP",
     status: "INVITED",
     startedAt: new Date(),
   });
-  const users = await buildUserMap([created.callerId, created.calleeId]);
-  return denormalizeCall(created, users);
+  const userMap = await buildUserMap(created.participantIds);
+  return denormalizeCall(created, userMap);
 }
 
 export async function getCall(
@@ -127,32 +178,37 @@ export async function getCall(
   }
   const doc = await CallSession.findById(callId);
   if (!doc) throw new NotFoundError("Call");
-  const isParticipant =
-    doc.callerId.toString() === requesterId ||
-    doc.calleeId.toString() === requesterId;
+  const isParticipant = doc.participantIds.some(
+    (id) => id.toString() === requesterId,
+  );
   if (!isParticipant) throw new ForbiddenError();
-  const users = await buildUserMap([doc.callerId, doc.calleeId]);
+  const users = await buildUserMap(doc.participantIds);
   return denormalizeCall(doc, users);
 }
 
 export async function acceptCall(
   callId: string,
-  calleeId: string,
+  userId: string,
 ): Promise<CallSessionResponseShape> {
   if (!Types.ObjectId.isValid(callId)) {
     throw new ValidationError("callId must be a valid id");
   }
   const doc = await CallSession.findById(callId);
   if (!doc) throw new NotFoundError("Call");
-  if (doc.calleeId.toString() !== calleeId) {
+  // The initiator can't "accept" their own call; only invited peers can.
+  if (doc.initiatorId.toString() === userId) {
     throw new ForbiddenError();
   }
+  const isParticipant = doc.participantIds.some(
+    (id) => id.toString() === userId,
+  );
+  if (!isParticipant) throw new ForbiddenError();
   if (doc.status === "INVITED") {
     doc.status = "ACTIVE";
     doc.acceptedAt = new Date();
     await doc.save();
   }
-  const users = await buildUserMap([doc.callerId, doc.calleeId]);
+  const users = await buildUserMap(doc.participantIds);
   return denormalizeCall(doc, users);
 }
 
@@ -166,9 +222,9 @@ export async function endCall(
   }
   const doc = await CallSession.findById(callId);
   if (!doc) throw new NotFoundError("Call");
-  const isParticipant =
-    doc.callerId.toString() === requesterId ||
-    doc.calleeId.toString() === requesterId;
+  const isParticipant = doc.participantIds.some(
+    (id) => id.toString() === requesterId,
+  );
   if (!isParticipant) throw new ForbiddenError();
 
   // Idempotent: if already ended, no-op.
@@ -194,7 +250,7 @@ export async function endCall(
     }
     await doc.save();
   }
-  const users = await buildUserMap([doc.callerId, doc.calleeId]);
+  const users = await buildUserMap(doc.participantIds);
   return denormalizeCall(doc, users);
 }
 
@@ -208,14 +264,12 @@ export async function listMyCalls(
 ): Promise<CallSessionResponseShape[]> {
   const limit = Math.min(100, Math.max(1, input.limit ?? 50));
   const oid = new Types.ObjectId(userId);
-  const docs = await CallSession.find({
-    $or: [{ callerId: oid }, { calleeId: oid }],
-  })
+  const docs = await CallSession.find({ participantIds: oid })
     .sort({ startedAt: -1 })
     .limit(limit);
   const allIds: Types.ObjectId[] = [];
   for (const d of docs) {
-    allIds.push(d.callerId, d.calleeId);
+    for (const id of d.participantIds) allIds.push(id);
   }
   const users = await buildUserMap(allIds);
   return docs.map((d) => denormalizeCall(d, users));

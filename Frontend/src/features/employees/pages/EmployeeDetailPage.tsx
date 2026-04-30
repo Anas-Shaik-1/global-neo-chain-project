@@ -128,7 +128,7 @@ export function EmployeeDetailPage() {
             variant="outline"
             className="gap-2"
             onClick={() => {
-              void call.start(data.id, data.name);
+              void call.start([data.id], [{ userId: data.id, name: data.name }]);
             }}
           >
             <Phone className="h-4 w-4" />

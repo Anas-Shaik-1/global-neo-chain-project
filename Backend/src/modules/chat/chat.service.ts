@@ -3,6 +3,7 @@ import {
   Conversation,
   buildPairKey,
   type ConversationDoc,
+  type ConversationKind,
 } from "../../models/conversation.model.js";
 import { Message, type MessageDoc } from "../../models/message.model.js";
 import { User } from "../../models/user.model.js";
@@ -23,6 +24,9 @@ export interface ParticipantSummary {
 
 export interface ConversationResponseShape {
   id: string;
+  kind: ConversationKind;
+  name: string | null;
+  createdById: string | null;
   participants: ParticipantSummary[];
   lastMessageAt: Date | null;
   lastMessagePreview: string | null;
@@ -74,6 +78,9 @@ export function denormalizeConversation(
 ): ConversationResponseShape {
   return {
     id: c._id.toString(),
+    kind: (c.kind ?? "DM") as ConversationKind,
+    name: c.name ?? null,
+    createdById: c.createdById ? c.createdById.toString() : null,
     participants: c.participantIds.map(
       (id) =>
         participants.get(id.toString()) ?? {
@@ -141,6 +148,7 @@ export async function openConversation(
   if (!convo) {
     try {
       convo = await Conversation.create({
+        kind: "DM",
         participantIds: sortedIds,
         pairKey,
         lastMessageAt: null,
@@ -183,6 +191,128 @@ export async function listConversations(
   }
   const participants = await buildParticipantsMap(allIds);
   return docs.map((d) => denormalizeConversation(d, participants));
+}
+
+export interface CreateGroupInput {
+  name: string;
+  participantIds: string[]; // 1+ other users; creator added automatically if missing
+}
+
+export async function createGroup(
+  creatorId: string,
+  input: CreateGroupInput,
+): Promise<ConversationResponseShape> {
+  const trimmedName = (input.name ?? "").trim();
+  if (!trimmedName) throw new ValidationError("Group name is required");
+  if (trimmedName.length > 100) throw new ValidationError("Group name too long");
+
+  if (!Types.ObjectId.isValid(creatorId)) {
+    throw new ValidationError("creatorId must be a valid id");
+  }
+  for (const id of input.participantIds) {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new ValidationError("participantIds must contain valid ids");
+    }
+  }
+
+  const allIds = Array.from(new Set([creatorId, ...input.participantIds]));
+  if (allIds.length < 2) {
+    throw new ValidationError("A group needs at least 2 participants");
+  }
+
+  // Validate all users exist.
+  const users = await User.find({
+    _id: { $in: allIds.map((id) => new Types.ObjectId(id)) },
+  })
+    .select("_id")
+    .lean();
+  if (users.length !== allIds.length) {
+    throw new ValidationError("One or more participants don't exist");
+  }
+
+  const conv = await Conversation.create({
+    kind: "GROUP",
+    name: trimmedName,
+    participantIds: allIds.map((id) => new Types.ObjectId(id)),
+    createdById: new Types.ObjectId(creatorId),
+    pairKey: null,
+  });
+
+  const participants = await buildParticipantsMap(conv.participantIds);
+  return denormalizeConversation(conv, participants);
+}
+
+export async function addGroupMember(
+  conversationId: string,
+  requesterId: string,
+  userId: string,
+): Promise<ConversationResponseShape> {
+  if (!Types.ObjectId.isValid(conversationId)) {
+    throw new ValidationError("conversationId must be a valid id");
+  }
+  if (!Types.ObjectId.isValid(userId)) {
+    throw new ValidationError("userId must be a valid id");
+  }
+  const conv = await Conversation.findById(conversationId);
+  if (!conv) throw new NotFoundError("Conversation");
+  if (conv.kind !== "GROUP") {
+    throw new ValidationError("Cannot add members to a DM");
+  }
+  const requesterIsMember = conv.participantIds.some(
+    (id) => id.toString() === requesterId,
+  );
+  if (!requesterIsMember) {
+    throw new ForbiddenError("Only group members can add others");
+  }
+
+  // Validate the candidate user exists.
+  const candidate = await User.findById(userId).select("_id").lean();
+  if (!candidate) throw new NotFoundError("User");
+
+  const alreadyMember = conv.participantIds.some(
+    (id) => id.toString() === userId,
+  );
+  if (!alreadyMember) {
+    conv.participantIds.push(new Types.ObjectId(userId));
+    await conv.save();
+  }
+
+  const participants = await buildParticipantsMap(conv.participantIds);
+  return denormalizeConversation(conv, participants);
+}
+
+export async function removeGroupMember(
+  conversationId: string,
+  requesterId: string,
+  userId: string,
+): Promise<ConversationResponseShape> {
+  if (!Types.ObjectId.isValid(conversationId)) {
+    throw new ValidationError("conversationId must be a valid id");
+  }
+  if (!Types.ObjectId.isValid(userId)) {
+    throw new ValidationError("userId must be a valid id");
+  }
+  const conv = await Conversation.findById(conversationId);
+  if (!conv) throw new NotFoundError("Conversation");
+  if (conv.kind !== "GROUP") {
+    throw new ValidationError("Cannot remove members from a DM");
+  }
+
+  const isCreator = conv.createdById?.toString() === requesterId;
+  const isSelf = userId === requesterId;
+  if (!isCreator && !isSelf) {
+    throw new ForbiddenError(
+      "Only the creator can remove others; members can only remove themselves",
+    );
+  }
+
+  conv.participantIds = conv.participantIds.filter(
+    (id) => id.toString() !== userId,
+  );
+  await conv.save();
+
+  const participants = await buildParticipantsMap(conv.participantIds);
+  return denormalizeConversation(conv, participants);
 }
 
 export interface ListMessagesInput {

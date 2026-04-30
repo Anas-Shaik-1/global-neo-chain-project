@@ -16,14 +16,19 @@ export const CallParticipantSummary = z
 export const CallSessionResponse = z
   .object({
     id: z.string(),
-    caller: CallParticipantSummary,
-    callee: CallParticipantSummary,
+    participants: z.array(CallParticipantSummary),
+    initiatorId: z.string(),
+    initiatorName: z.string(),
+    kind: z.enum(["DIRECT", "GROUP"]),
     status: z.enum(["INVITED", "ACTIVE", "ENDED", "REJECTED", "MISSED"]),
     startedAt: z.string().datetime(),
     acceptedAt: z.string().datetime().nullable(),
     endedAt: z.string().datetime().nullable(),
     durationSeconds: z.number().int().nonnegative().nullable(),
     endReason: z.enum(["HANGUP", "REJECT", "TIMEOUT", "ERROR"]).nullable(),
+    // Optional convenience fields, present only on DIRECT calls.
+    caller: CallParticipantSummary.optional(),
+    callee: CallParticipantSummary.optional(),
   })
   .openapi("CallSession");
 
@@ -33,7 +38,7 @@ export const ListCallsResponse = z
 
 export const CreateCallBody = z
   .object({
-    calleeId: objectIdString,
+    peerIds: z.array(objectIdString).min(1).max(3),
   })
   .openapi("CreateCallBody");
 
@@ -52,7 +57,7 @@ registry.registerPath({
   responses: {
     201: { description: "Created", ...json(CallSessionResponse) },
     400: { description: "Validation failed", ...json(ErrorRef) },
-    404: { description: "Callee not found", ...json(ErrorRef) },
+    404: { description: "Peer not found", ...json(ErrorRef) },
   },
 });
 

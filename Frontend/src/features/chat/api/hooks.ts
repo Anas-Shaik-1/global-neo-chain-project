@@ -12,6 +12,8 @@ function errorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
+export type ConversationKind = "DM" | "GROUP";
+
 export interface ChatParticipant {
   id: string;
   name: string;
@@ -20,6 +22,9 @@ export interface ChatParticipant {
 
 export interface Conversation {
   id: string;
+  kind: ConversationKind;
+  name: string | null;
+  createdById: string | null;
   participants: ChatParticipant[];
   lastMessageAt: string | null;
   lastMessagePreview: string | null;
@@ -68,6 +73,62 @@ export function useOpenConversation() {
       toast.success("Conversation opened");
     },
     onError: (err) => toast.error(errorMessage(err, "Could not open conversation")),
+  });
+}
+
+export interface CreateGroupInput {
+  name: string;
+  participantIds: string[];
+}
+
+export function useCreateGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: CreateGroupInput) => {
+      const res = await api().post("/chat/groups", input);
+      return res.data as Conversation;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: chatKeys.conversations });
+      toast.success("Group created");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not create group")),
+  });
+}
+
+export function useAddGroupMember(conversationId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      if (!conversationId) throw new Error("No conversation selected");
+      const res = await api().post(
+        `/chat/conversations/${conversationId}/members`,
+        { userId },
+      );
+      return res.data as Conversation;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: chatKeys.conversations });
+      toast.success("Member added");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not add member")),
+  });
+}
+
+export function useRemoveGroupMember(conversationId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      if (!conversationId) throw new Error("No conversation selected");
+      const res = await api().delete(
+        `/chat/conversations/${conversationId}/members/${userId}`,
+      );
+      return res.data as Conversation;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: chatKeys.conversations });
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not remove member")),
   });
 }
 

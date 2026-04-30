@@ -1,6 +1,7 @@
+import { Users } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
-import type { Conversation } from "../api/hooks";
+import type { ChatParticipant, Conversation } from "../api/hooks";
 
 interface Props {
   conversations: Conversation[];
@@ -9,7 +10,7 @@ interface Props {
   onSelect: (id: string) => void;
 }
 
-function otherParticipant(c: Conversation, meId: string | undefined) {
+function dmOther(c: Conversation, meId: string | undefined): ChatParticipant | undefined {
   if (!meId) return c.participants[0];
   return c.participants.find((p) => p.id !== meId) ?? c.participants[0];
 }
@@ -36,6 +37,51 @@ function initials(name: string): string {
   return (first + last).toUpperCase() || "?";
 }
 
+interface GroupAvatarStackProps {
+  participants: ChatParticipant[];
+}
+
+function GroupAvatarStack({ participants }: GroupAvatarStackProps) {
+  const visible = participants.slice(0, 3);
+  const overflow = Math.max(0, participants.length - 3);
+  const hasOverflow = overflow > 0;
+  // We render up to 3 avatars overlapping. If there's overflow, the third
+  // slot becomes a "+N" tile instead of a face.
+  return (
+    <div className="relative h-9 w-9 shrink-0">
+      {visible.map((p, idx) => {
+        const isThirdAndOverflow = hasOverflow && idx === 2;
+        const left = idx * 8;
+        const top = idx * 4;
+        if (isThirdAndOverflow) {
+          return (
+            <div
+              key={`overflow-${p.id}`}
+              className="absolute flex h-6 w-6 items-center justify-center rounded-full border border-card bg-muted text-[10px] font-medium text-foreground"
+              style={{ left, top }}
+              aria-label={`${overflow + 1} more members`}
+            >
+              +{overflow + 1}
+            </div>
+          );
+        }
+        return (
+          <Avatar
+            key={p.id}
+            className="absolute h-6 w-6 border border-card"
+            style={{ left, top }}
+          >
+            {p.avatarUrl ? (
+              <AvatarImage src={p.avatarUrl} alt={p.name} />
+            ) : null}
+            <AvatarFallback className="text-[10px]">{initials(p.name)}</AvatarFallback>
+          </Avatar>
+        );
+      })}
+    </div>
+  );
+}
+
 export function ConversationList({ conversations, meId, selectedId, onSelect }: Props) {
   if (conversations.length === 0) {
     return (
@@ -47,8 +93,14 @@ export function ConversationList({ conversations, meId, selectedId, onSelect }: 
   return (
     <ul className="flex flex-col">
       {conversations.map((c) => {
-        const other = otherParticipant(c, meId);
         const active = c.id === selectedId;
+        const isGroup = c.kind === "GROUP";
+        const other = isGroup ? null : dmOther(c, meId);
+        const title = isGroup
+          ? c.name ?? "Group"
+          : other?.name ?? "Unknown";
+        const subtitle = c.lastMessagePreview ?? "No messages yet";
+
         return (
           <li key={c.id}>
             <button
@@ -59,23 +111,33 @@ export function ConversationList({ conversations, meId, selectedId, onSelect }: 
                 active && "bg-accent",
               )}
             >
-              <Avatar className="h-9 w-9 shrink-0">
-                {other?.avatarUrl ? (
-                  <AvatarImage src={other.avatarUrl} alt={other.name} />
-                ) : null}
-                <AvatarFallback>{initials(other?.name ?? "?")}</AvatarFallback>
-              </Avatar>
+              {isGroup ? (
+                <GroupAvatarStack participants={c.participants} />
+              ) : (
+                <Avatar className="h-9 w-9 shrink-0">
+                  {other?.avatarUrl ? (
+                    <AvatarImage src={other.avatarUrl} alt={other.name} />
+                  ) : null}
+                  <AvatarFallback>{initials(other?.name ?? "?")}</AvatarFallback>
+                </Avatar>
+              )}
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-sm font-medium">
-                    {other?.name ?? "Unknown"}
+                  <span className="flex min-w-0 items-center gap-1.5 truncate text-sm font-medium">
+                    {isGroup && (
+                      <Users
+                        className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                        aria-hidden="true"
+                      />
+                    )}
+                    <span className="truncate">{title}</span>
                   </span>
                   <span className="shrink-0 text-xs text-muted-foreground">
                     {relativeTime(c.lastMessageAt)}
                   </span>
                 </div>
                 <div className="truncate text-xs text-muted-foreground">
-                  {c.lastMessagePreview ?? "No messages yet"}
+                  {subtitle}
                 </div>
               </div>
             </button>
