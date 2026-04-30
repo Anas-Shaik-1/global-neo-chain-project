@@ -35,6 +35,7 @@ async function seedUser(email: string, password: string) {
     passwordHash: await bcrypt.hash(password, 4),
     name: "Test",
     role: "ADMIN",
+    approvalStatus: "ACTIVE",
   });
 }
 

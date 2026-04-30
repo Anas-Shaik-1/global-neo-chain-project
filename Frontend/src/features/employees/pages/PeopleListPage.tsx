@@ -23,17 +23,17 @@ export function PeopleListPage() {
   const [q, setQ] = useState("");
   const me = useAppSelector((s) => s.auth.user);
   const { data, isLoading } = useEmployeesList({ q, page: 1, limit: 50 });
-  const canCreate = me?.role === "HR" || me?.role === "ADMIN";
+  const canReviewCandidates = me?.role === "HR" || me?.role === "ADMIN";
 
   return (
     <PageContainer width="wide" className="space-y-6">
       <PageHeader
         title="People"
-        description="The directory of everyone at Global NeoChain."
+        description="The directory of everyone at Global NeoChain. New joiners self-register and flow through HR + Admin review."
         actions={
-          canCreate ? (
-            <Button asChild size="sm">
-              <Link to="/people/new">+ New employee</Link>
+          canReviewCandidates ? (
+            <Button asChild size="sm" variant="outline">
+              <Link to="/people/candidates">Review candidates</Link>
             </Button>
           ) : null
         }

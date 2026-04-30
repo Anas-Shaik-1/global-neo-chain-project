@@ -6,6 +6,23 @@ export type Role = (typeof ROLES)[number];
 export const EMPLOYMENT_TYPES = ["FULL_TIME", "PART_TIME", "CONTRACT", "INTERN"] as const;
 export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number];
 
+/**
+ * Two-stage approval pipeline for new accounts:
+ *   PENDING_HR     → public registration just submitted, HR hasn't reviewed yet
+ *   PENDING_ADMIN  → HR signed off, awaiting Admin's final approval
+ *   ACTIVE         → Admin signed off, the account can now log in
+ *   REJECTED       → either HR or Admin declined the application
+ *
+ * Login is gated on `approvalStatus === "ACTIVE"` — see auth.service.
+ */
+export const APPROVAL_STATUSES = [
+  "PENDING_HR",
+  "PENDING_ADMIN",
+  "ACTIVE",
+  "REJECTED",
+] as const;
+export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
+
 const emergencyContactSchema = new Schema(
   {
     name: { type: String, trim: true },
@@ -51,6 +68,25 @@ const userSchema = new Schema(
     // TOTP shared secret (base32). select:false so it never leaks via /auth/me, etc.
     totpSecret: { type: String, default: null, select: false },
     totpEnabled: { type: Boolean, default: false },
+
+    // Self-registration + 2-stage approval pipeline. New accounts default to
+    // PENDING_HR; existing seeded users (admin/hr/pm/employee) are explicitly
+    // stamped ACTIVE on creation, and the seed has a backfill step for any
+    // legacy docs that pre-date this column.
+    approvalStatus: {
+      type: String,
+      enum: APPROVAL_STATUSES,
+      required: true,
+      default: "PENDING_HR",
+      index: true,
+    },
+    approvalNotes: { type: String, default: null, maxlength: 500 },
+    hrApprovedById: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    hrApprovedAt: { type: Date, default: null },
+    adminApprovedById: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    adminApprovedAt: { type: Date, default: null },
+    rejectedById: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    rejectedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );

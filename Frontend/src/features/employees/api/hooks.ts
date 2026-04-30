@@ -17,7 +17,10 @@ export const employeeKeys = {
   list: (params: Record<string, unknown>) => ["employees", "list", params] as const,
   detail: (id: string) => ["employees", "detail", id] as const,
   positions: (id: string) => ["employees", "positions", id] as const,
+  candidates: (stage: "hr" | "admin") => ["employees", "candidates", stage] as const,
 };
+
+export type ApprovalStatus = "PENDING_HR" | "PENDING_ADMIN" | "ACTIVE" | "REJECTED";
 
 export const departmentKeys = {
   all: ["departments"] as const,
@@ -31,12 +34,14 @@ export interface PublicProfile {
   role: "ADMIN" | "HR" | "EMPLOYEE";
   isProjectManager: boolean;
   isActive: boolean;
+  approvalStatus: ApprovalStatus;
   jobTitle?: string | null;
   departmentId?: string | null;
   departmentName?: string | null;
   phone?: string | null;
   avatarUrl?: string | null;
   bio?: string | null;
+  createdAt?: string;
 }
 
 export interface FullProfile extends PublicProfile {
@@ -46,6 +51,10 @@ export interface FullProfile extends PublicProfile {
   employmentType?: "FULL_TIME" | "PART_TIME" | "CONTRACT" | "INTERN" | null;
   emergencyContact?: { name: string; phone: string; relationship: string } | null;
   resumeUrl?: string | null;
+  approvalNotes?: string | null;
+  hrApprovedAt?: string | null;
+  adminApprovedAt?: string | null;
+  rejectedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -124,18 +133,66 @@ export function useUploadResume(id: string) {
   });
 }
 
-export function useCreateEmployee() {
+// Note: the legacy useCreateEmployee hook was removed when the
+// self-registration + 2-stage approval pipeline replaced HR-creates-employee.
+// New users go through `useRegister` (auth/api/hooks) and the candidate
+// review flow below.
+
+export function useCandidates(params: { stage: "hr" | "admin" }) {
+  return useQuery({
+    queryKey: employeeKeys.candidates(params.stage),
+    queryFn: async () => {
+      const res = await api().get("/employees/candidates", { params });
+      return res.data as { items: PublicProfile[]; total: number; page: number; limit: number };
+    },
+  });
+}
+
+export function useApproveHr(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { email: string; name: string; role: string; jobTitle?: string; departmentId?: string }) => {
-      const res = await api().post("/employees", input);
+    mutationFn: async () => {
+      const res = await api().post(`/employees/${id}/approve-hr`);
       return res.data as FullProfile;
     },
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["employees", "candidates"] });
       qc.invalidateQueries({ queryKey: employeeKeys.all });
-      toast.success("Employee created — temp password logged on backend");
+      toast.success("Approved — moved to Admin queue");
     },
-    onError: (err) => toast.error(errorMessage(err, "Could not create employee")),
+    onError: (err) => toast.error(errorMessage(err, "Could not approve candidate")),
+  });
+}
+
+export function useApproveAdmin(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api().post(`/employees/${id}/approve-admin`);
+      return res.data as FullProfile;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["employees", "candidates"] });
+      qc.invalidateQueries({ queryKey: employeeKeys.all });
+      toast.success("Approved — account is now active");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not approve candidate")),
+  });
+}
+
+export function useRejectCandidate(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { notes?: string } = {}) => {
+      const res = await api().post(`/employees/${id}/reject`, input);
+      return res.data as FullProfile;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["employees", "candidates"] });
+      qc.invalidateQueries({ queryKey: employeeKeys.all });
+      toast.success("Candidate rejected");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not reject candidate")),
   });
 }
 

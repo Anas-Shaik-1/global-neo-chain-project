@@ -2,6 +2,7 @@ import { NavLink } from "react-router-dom";
 import {
   User,
   Users,
+  UserCheck,
   Building2,
   LayoutDashboard,
   ListChecks,
@@ -20,6 +21,7 @@ const ACTIVE_NAV = [
   { to: "/dashboard", label: "Dashboard", Icon: LayoutDashboard, roles: undefined as undefined | ("HR" | "ADMIN")[] },
   { to: "/profile", label: "Profile", Icon: User, roles: undefined },
   { to: "/people", label: "People", Icon: Users, roles: undefined },
+  { to: "/people/candidates", label: "Candidates", Icon: UserCheck, roles: ["HR", "ADMIN"] as ("HR" | "ADMIN")[] },
   { to: "/departments", label: "Departments", Icon: Building2, roles: ["HR", "ADMIN"] as ("HR" | "ADMIN")[] },
   { to: "/attendance", label: "Attendance", Icon: CalendarClock, roles: undefined },
   { to: "/tasks", label: "Tasks", Icon: ListChecks, roles: undefined },

@@ -80,3 +80,36 @@ export const TwoFactorDisableSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 export type TwoFactorDisableValues = z.infer<typeof TwoFactorDisableSchema>;
+
+// Public self-registration -------------------------------------------------
+
+const objectIdRegex = /^[0-9a-fA-F]{24}$/;
+const phoneRegex = /^[+\d][\d\s\-()]{6,24}$/;
+
+export const RegisterSchema = z
+  .object({
+    email: emailSchema,
+    name: z.string().trim().min(1, "Name is required").max(100),
+    password: strongPasswordSchema,
+    confirmPassword: z.string().min(1, "Please confirm your password"),
+    phone: z
+      .string()
+      .regex(phoneRegex, "Enter a valid phone number")
+      .optional()
+      .or(z.literal("")),
+    departmentId: z
+      .string()
+      .regex(objectIdRegex, "Invalid department")
+      .optional()
+      .or(z.literal("")),
+  })
+  .refine((d) => d.password === d.confirmPassword, {
+    path: ["confirmPassword"],
+    message: "Passwords do not match",
+  });
+export type RegisterValues = z.infer<typeof RegisterSchema>;
+
+export const RegistrationStatusCheckSchema = z.object({
+  email: emailSchema,
+});
+export type RegistrationStatusCheckValues = z.infer<typeof RegistrationStatusCheckSchema>;

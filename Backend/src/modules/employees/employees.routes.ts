@@ -5,10 +5,10 @@ import { requireAuth } from "../../middleware/auth.js";
 import { requireRole } from "../../middleware/requireRole.js";
 import { uploadAvatar, uploadResume } from "../../middleware/upload.js";
 import {
-  CreateEmployeeBody,
   UpdateEmployeeBody,
   CreatePositionBody,
   UpdatePositionBody,
+  RejectCandidateBody,
 } from "./employees.schema.js";
 
 export const employeesRouter = Router();
@@ -16,7 +16,22 @@ export const employeesRouter = Router();
 employeesRouter.use(requireAuth);
 
 employeesRouter.get("/", ctl.getList);
-employeesRouter.post("/", requireRole("HR", "ADMIN"), validate(CreateEmployeeBody), ctl.postCreate);
+// NOTE: legacy `POST /employees` (HR creates user) is GONE — all new users go
+// through public self-registration (`POST /auth/register`) and the 2-stage
+// approval workflow below.
+
+// Approval workflow. Routes appear before `/:id` to avoid `/candidates` being
+// captured as an ObjectId param.
+employeesRouter.get("/candidates", requireRole("HR", "ADMIN"), ctl.getCandidates);
+employeesRouter.post("/:id/approve-hr", requireRole("HR", "ADMIN"), ctl.postApproveHr);
+employeesRouter.post("/:id/approve-admin", requireRole("ADMIN"), ctl.postApproveAdmin);
+employeesRouter.post(
+  "/:id/reject",
+  requireRole("HR", "ADMIN"),
+  validate(RejectCandidateBody),
+  ctl.postReject,
+);
+
 employeesRouter.get("/:id", ctl.getOne);
 employeesRouter.patch("/:id", validate(UpdateEmployeeBody), ctl.patchOne);
 employeesRouter.post("/:id/deactivate", requireRole("HR", "ADMIN"), ctl.postDeactivate);

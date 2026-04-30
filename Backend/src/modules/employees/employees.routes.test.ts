@@ -35,7 +35,7 @@ async function buildApp() {
 async function seed(
   role: "ADMIN" | "HR" | "EMPLOYEE",
   email: string,
-  overrides: { isProjectManager?: boolean } = {},
+  overrides: { isProjectManager?: boolean; approvalStatus?: string } = {},
 ) {
   const { User } = await import("../../models/user.model.js");
   return User.create({
@@ -46,6 +46,7 @@ async function seed(
     isProjectManager: overrides.isProjectManager ?? false,
     dateOfBirth: new Date("1990-01-01"),
     address: "secret",
+    approvalStatus: overrides.approvalStatus ?? "ACTIVE",
   });
 }
 
@@ -96,29 +97,6 @@ describe("/employees", () => {
     const res = await request(app).get(`/employees/${e._id}`).set("Authorization", `Bearer ${tk}`);
     expect(res.status).toBe(200);
     expect(res.body.address).toBe("secret");
-  });
-
-  it("POST /employees rejects non-HR with 403", async () => {
-    const e = await seed("EMPLOYEE", "e@b.com");
-    const tk = await tokenFor(e._id.toString(), "EMPLOYEE");
-    const app = await buildApp();
-    const res = await request(app)
-      .post("/employees")
-      .set("Authorization", `Bearer ${tk}`)
-      .send({ email: "n@b.com", name: "N", role: "EMPLOYEE" });
-    expect(res.status).toBe(403);
-  });
-
-  it("POST /employees by HR creates user", async () => {
-    const hr = await seed("HR", "hr@b.com");
-    const tk = await tokenFor(hr._id.toString(), "HR");
-    const app = await buildApp();
-    const res = await request(app)
-      .post("/employees")
-      .set("Authorization", `Bearer ${tk}`)
-      .send({ email: "n@b.com", name: "N", role: "EMPLOYEE" });
-    expect(res.status).toBe(201);
-    expect(res.body.email).toBe("n@b.com");
   });
 
   it("PATCH /employees/:id by self updates allowed fields", async () => {
@@ -214,5 +192,70 @@ describe("/employees", () => {
     expect(res.status).toBe(204);
     const open = await Position.find({ userId: e._id, endedAt: null });
     expect(open.length).toBe(0);
+  });
+
+  // 2-stage approval workflow ----------------------------------------------
+
+  it("GET /employees/candidates?stage=hr by EMPLOYEE returns 403", async () => {
+    const me = await seed("EMPLOYEE", "me@b.com");
+    const tk = await tokenFor(me._id.toString(), "EMPLOYEE");
+    const app = await buildApp();
+    const res = await request(app)
+      .get("/employees/candidates?stage=hr")
+      .set("Authorization", `Bearer ${tk}`);
+    expect(res.status).toBe(403);
+  });
+
+  it("POST /employees/:id/approve-hr by HR transitions PENDING_HR → PENDING_ADMIN", async () => {
+    const hr = await seed("HR", "hr@b.com");
+    const candidate = await seed("EMPLOYEE", "applicant@b.com", {
+      approvalStatus: "PENDING_HR",
+    });
+    const tk = await tokenFor(hr._id.toString(), "HR");
+    const app = await buildApp();
+    const res = await request(app)
+      .post(`/employees/${candidate._id}/approve-hr`)
+      .set("Authorization", `Bearer ${tk}`);
+    expect(res.status).toBe(200);
+    expect(res.body.approvalStatus).toBe("PENDING_ADMIN");
+    expect(res.body.hrApprovedAt).toBeTruthy();
+  });
+
+  it("POST /employees/:id/approve-admin by HR returns 403 (admin only)", async () => {
+    const hr = await seed("HR", "hr@b.com");
+    const candidate = await seed("EMPLOYEE", "applicant@b.com", {
+      approvalStatus: "PENDING_ADMIN",
+    });
+    const tk = await tokenFor(hr._id.toString(), "HR");
+    const app = await buildApp();
+    const res = await request(app)
+      .post(`/employees/${candidate._id}/approve-admin`)
+      .set("Authorization", `Bearer ${tk}`);
+    expect(res.status).toBe(403);
+  });
+
+  it("POST /employees/:id/approve-admin by ADMIN flips status to ACTIVE", async () => {
+    const admin = await seed("ADMIN", "admin@b.com");
+    const candidate = await seed("EMPLOYEE", "applicant@b.com", {
+      approvalStatus: "PENDING_ADMIN",
+    });
+    const tk = await tokenFor(admin._id.toString(), "ADMIN");
+    const app = await buildApp();
+    const res = await request(app)
+      .post(`/employees/${candidate._id}/approve-admin`)
+      .set("Authorization", `Bearer ${tk}`);
+    expect(res.status).toBe(200);
+    expect(res.body.approvalStatus).toBe("ACTIVE");
+    expect(res.body.adminApprovedAt).toBeTruthy();
+  });
+
+  it("POST /auth/login by PENDING_HR user returns 401 with awaiting-HR message", async () => {
+    await seed("EMPLOYEE", "applicant@b.com", { approvalStatus: "PENDING_HR" });
+    const app = await buildApp();
+    const res = await request(app)
+      .post("/auth/login")
+      .send({ email: "applicant@b.com", password: "pw" });
+    expect(res.status).toBe(401);
+    expect(res.body.message).toMatch(/awaiting HR approval/i);
   });
 });

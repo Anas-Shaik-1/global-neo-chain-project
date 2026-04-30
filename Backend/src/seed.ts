@@ -63,6 +63,21 @@ async function main() {
     logger.info({ count: backfill.modifiedCount }, "backfilled isActive on legacy users");
   }
 
+  // Backfill: every pre-existing User doc must have approvalStatus set, or the
+  // 2-stage approval login gate (added with self-registration) would lock them
+  // out. Legacy docs are pre-approved as ACTIVE — they were created the old
+  // way (HR → POST /employees) which had no approval workflow. Idempotent.
+  const approvalBackfill = await User.updateMany(
+    { approvalStatus: { $exists: false } },
+    { $set: { approvalStatus: "ACTIVE" } },
+  );
+  if (approvalBackfill.modifiedCount > 0) {
+    logger.info(
+      { count: approvalBackfill.modifiedCount },
+      "backfilled approvalStatus=ACTIVE on legacy users",
+    );
+  }
+
   // Migrate legacy role="PM" docs left over from before the role-system
   // refactor. Mongoose validation on read would otherwise reject them once we
   // tightened ROLES to ["ADMIN", "HR", "EMPLOYEE"]. Idempotent.
@@ -95,6 +110,9 @@ async function main() {
       isActive: true,
       // Demo users have known credentials — don't force them to reset on first login.
       mustChangePassword: false,
+      // Demo users skip the 2-stage approval pipeline entirely; they're seeded
+      // pre-approved so the platform is usable on a fresh `pnpm seed`.
+      approvalStatus: "ACTIVE",
     });
     logger.info({ email: u.email, role: u.role }, "user created");
   }

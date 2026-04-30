@@ -242,7 +242,10 @@ export function LoginPage() {
       )}
 
       <p className="text-center text-xs text-muted-foreground">
-        Need access? Talk to your HR admin.
+        New here?{" "}
+        <Link to="/register" className="font-medium text-primary hover:underline">
+          Create an account
+        </Link>
       </p>
     </AuthShell>
   );

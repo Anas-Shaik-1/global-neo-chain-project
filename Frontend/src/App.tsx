@@ -9,6 +9,7 @@ import { queryClient } from "@/lib/queryClient";
 import { ThemeProvider } from "@/lib/theme";
 import { ProtectedRoute } from "@/features/auth/ProtectedRoute";
 import { LoginPage } from "@/features/auth/LoginPage";
+import { RegisterPage } from "@/features/auth/pages/RegisterPage";
 import { RequestResetPage } from "@/features/auth/pages/RequestResetPage";
 import { ResetPasswordPage } from "@/features/auth/pages/ResetPasswordPage";
 import { ChangePasswordPage } from "@/features/auth/pages/ChangePasswordPage";
@@ -19,7 +20,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { ProfilePage } from "@/features/employees/pages/ProfilePage";
 import { PeopleListPage } from "@/features/employees/pages/PeopleListPage";
 import { EmployeeDetailPage } from "@/features/employees/pages/EmployeeDetailPage";
-import { CreateEmployeePage } from "@/features/employees/pages/CreateEmployeePage";
+import { CandidatesPage } from "@/features/employees/pages/CandidatesPage";
 import { DepartmentsPage } from "@/features/employees/pages/DepartmentsPage";
 import { AttendancePage } from "@/features/attendance/pages/AttendancePage";
 import { TasksPage } from "@/features/tasks/pages/TasksPage";
@@ -40,6 +41,7 @@ function Routed() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
       <Route path="/forgot-password" element={<RequestResetPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/verify-email" element={<VerifyEmailPage />} />
@@ -51,10 +53,13 @@ function Routed() {
           <Route path="/security" element={<SecurityPage />} />
           <Route path="/people" element={<PeopleListPage />} />
           <Route
-            path="/people/new"
+            path="/people/candidates"
             element={
-              <RoleGate roles={["HR", "ADMIN"]} fallback={<EmptyState label="Forbidden" hint="HR or Admin only." />}>
-                <CreateEmployeePage />
+              <RoleGate
+                roles={["HR", "ADMIN"]}
+                fallback={<EmptyState label="Forbidden" hint="HR or Admin only." />}
+              >
+                <CandidatesPage />
               </RoleGate>
             }
           />

@@ -1,7 +1,11 @@
-import bcrypt from "bcrypt";
-import crypto from "node:crypto";
 import { Types } from "mongoose";
-import { User, type UserDoc, type Role, type EmploymentType } from "../../models/user.model.js";
+import {
+  User,
+  type UserDoc,
+  type Role,
+  type EmploymentType,
+  type ApprovalStatus,
+} from "../../models/user.model.js";
 import { Department } from "../../models/department.model.js";
 import { Position } from "../../models/position.model.js";
 import { ConflictError, NotFoundError, ForbiddenError } from "../../lib/errors.js";
@@ -15,12 +19,16 @@ interface PublicShape {
   role: Role;
   isProjectManager: boolean;
   isActive: boolean;
+  // Approval status is part of the public shape so list / candidate views can
+  // show "Pending HR review" badges without needing to fetch the full profile.
+  approvalStatus: ApprovalStatus;
   jobTitle?: string | null;
   departmentId?: string | null;
   departmentName?: string | null;
   phone?: string | null;
   avatarUrl?: string | null;
   bio?: string | null;
+  createdAt?: Date;
 }
 
 interface FullShape extends PublicShape {
@@ -30,11 +38,18 @@ interface FullShape extends PublicShape {
   employmentType?: EmploymentType | null;
   emergencyContact?: { name?: string; phone?: string; relationship?: string } | null;
   resumeUrl?: string | null;
+  // Approval pipeline audit trail. `approvalNotes` is HR/Admin-only on read
+  // because rejection rationale shouldn't be visible to other employees.
+  approvalNotes?: string | null;
+  hrApprovedAt?: Date | null;
+  adminApprovedAt?: Date | null;
+  rejectedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
 
 export function toPublicProfile(u: UserDoc, departmentName: string | null): PublicShape {
+  const d = u as unknown as { createdAt?: Date };
   return {
     id: u._id.toString(),
     email: u.email,
@@ -42,12 +57,14 @@ export function toPublicProfile(u: UserDoc, departmentName: string | null): Publ
     role: u.role,
     isProjectManager: Boolean(u.isProjectManager),
     isActive: u.isActive,
+    approvalStatus: (u.approvalStatus ?? "ACTIVE") as ApprovalStatus,
     jobTitle: u.jobTitle ?? null,
     departmentId: u.departmentId ? u.departmentId.toString() : null,
     departmentName,
     phone: u.phone ?? null,
     avatarUrl: u.avatarUrl ?? null,
     bio: u.bio ?? null,
+    createdAt: d.createdAt,
   };
 }
 
@@ -67,6 +84,10 @@ export function toFullProfile(u: UserDoc, departmentName: string | null): FullSh
         }
       : null,
     resumeUrl: u.resumeUrl ?? null,
+    approvalNotes: u.approvalNotes ?? null,
+    hrApprovedAt: u.hrApprovedAt ?? null,
+    adminApprovedAt: u.adminApprovedAt ?? null,
+    rejectedAt: u.rejectedAt ?? null,
     createdAt: d.createdAt,
     updatedAt: d.updatedAt,
   };
@@ -117,53 +138,178 @@ export async function getEmployee(id: string, requester: { id: string; role: Rol
   const u = await User.findById(id);
   if (!u) throw new NotFoundError("Employee");
   const deptName = await loadDepartmentName(u.departmentId);
-  return canSeeFullProfile(requester, id) ? toFullProfile(u, deptName) : toPublicProfile(u, deptName);
-}
-
-export interface CreateInput {
-  email: string;
-  name: string;
-  role: Role;
-  jobTitle?: string;
-  departmentId?: string;
-}
-
-export async function createEmployee(input: CreateInput): Promise<{ profile: FullShape; tempPassword: string }> {
-  const tempPassword = crypto.randomBytes(16).toString("base64url").slice(0, 16);
-  const passwordHash = await bcrypt.hash(tempPassword, 12);
-  try {
-    const created = await User.create({
-      email: input.email.toLowerCase(),
-      passwordHash,
-      name: input.name,
-      role: input.role,
-      jobTitle: input.jobTitle,
-      departmentId: input.departmentId ? new Types.ObjectId(input.departmentId) : undefined,
-      isActive: true,
-    });
-    logger.info({ email: created.email }, `created employee ${created.email} with temp password ${tempPassword}`);
-
-    // Best-effort: kick off email verification so the new hire receives a
-    // verification link straight after onboarding. We deliberately swallow
-    // any mail-driver / token-creation failures so the create flow always
-    // succeeds — HR can resend later via the in-app banner.
-    try {
-      await requestEmailVerification(created._id.toString());
-    } catch (err) {
-      logger.warn(
-        { email: created.email, err: (err as Error).message },
-        "auto-send verification email failed; HR may resend later",
-      );
-    }
-
-    const deptName = await loadDepartmentName(created.departmentId);
-    return { profile: toFullProfile(created, deptName), tempPassword };
-  } catch (err) {
-    if ((err as { code?: number })?.code === 11000) {
-      throw new ConflictError("Email already exists");
-    }
-    throw err;
+  if (!canSeeFullProfile(requester, id)) {
+    return toPublicProfile(u, deptName);
   }
+  const profile = toFullProfile(u, deptName);
+  // approvalNotes (rejection rationale) is only visible to HR / Admin. A user
+  // viewing their own profile gets the audit timestamps but not the note text.
+  const elevated = requester.role === "HR" || requester.role === "ADMIN";
+  if (!elevated) profile.approvalNotes = null;
+  return profile;
+}
+
+// ---------------------------------------------------------------------------
+// 2-stage approval workflow
+// ---------------------------------------------------------------------------
+
+export type CandidateStage = "hr" | "admin";
+
+export interface ListCandidatesInput {
+  stage: CandidateStage;
+  page?: number;
+  limit?: number;
+}
+
+/**
+ * Lists candidates queued at a given approval stage. `hr` returns PENDING_HR
+ * applicants; `admin` returns PENDING_ADMIN ones (HR has already cleared
+ * those). Sorted by createdAt asc so the oldest application is at the top —
+ * a natural FIFO review order.
+ */
+export async function listCandidates(input: ListCandidatesInput) {
+  const page = Math.max(1, input.page ?? 1);
+  const limit = Math.min(100, Math.max(1, input.limit ?? 20));
+  const status = input.stage === "hr" ? "PENDING_HR" : "PENDING_ADMIN";
+  const filter = { approvalStatus: status };
+  const [users, total] = await Promise.all([
+    User.find(filter).sort({ createdAt: 1 }).skip((page - 1) * limit).limit(limit),
+    User.countDocuments(filter),
+  ]);
+  const deptIds = Array.from(
+    new Set(users.map((u) => u.departmentId?.toString()).filter(Boolean) as string[]),
+  );
+  const depts = await Department.find({ _id: { $in: deptIds } }).select("name").lean();
+  const nameById = new Map<string, string>();
+  for (const d of depts) nameById.set(d._id.toString(), d.name);
+  const items = users.map((u) =>
+    toPublicProfile(u, u.departmentId ? nameById.get(u.departmentId.toString()) ?? null : null),
+  );
+  return { items, total, page, limit };
+}
+
+/**
+ * Notify all admins (including the approving HR if they happen to be ADMIN)
+ * that a candidate is now ready for the second-stage review. Best-effort:
+ * notify failures are logged and swallowed so the approval flow never aborts.
+ */
+async function notifyAdminsOfPendingCandidate(candidateId: string, candidateName: string) {
+  try {
+    const { notify } = await import("../notifications/notifications.service.js");
+    const admins = await User.find({ role: "ADMIN", approvalStatus: "ACTIVE" })
+      .select("_id")
+      .lean();
+    await Promise.all(
+      admins.map((a) =>
+        notify(a._id.toString(), {
+          kind: "CANDIDATE_AWAITING_REVIEW",
+          title: `${candidateName} is awaiting your final approval`,
+          link: "/people/candidates",
+        }),
+      ),
+    );
+  } catch (err) {
+    logger.warn({ err, candidateId }, "notifyAdminsOfPendingCandidate failed");
+  }
+}
+
+/**
+ * HR (or Admin) approves a candidate at the first stage. Transitions
+ * PENDING_HR → PENDING_ADMIN, stamps `hrApprovedById` + `hrApprovedAt`, and
+ * fans out a notification to all admins so the candidate doesn't sit in the
+ * second queue unseen.
+ *
+ * Throws ConflictError if the candidate is not currently PENDING_HR — this
+ * defends against double-clicks and against approving a rejected/active user.
+ */
+export async function approveAtHrStage(id: string, hrId: string): Promise<FullShape> {
+  const u = await User.findById(id);
+  if (!u) throw new NotFoundError("Candidate");
+  if (u.approvalStatus !== "PENDING_HR") {
+    throw new ConflictError(`Candidate is not awaiting HR approval (status: ${u.approvalStatus})`);
+  }
+  u.approvalStatus = "PENDING_ADMIN";
+  u.hrApprovedById = new Types.ObjectId(hrId);
+  u.hrApprovedAt = new Date();
+  await u.save();
+
+  void notifyAdminsOfPendingCandidate(u._id.toString(), u.name);
+
+  const deptName = await loadDepartmentName(u.departmentId);
+  return toFullProfile(u, deptName);
+}
+
+/**
+ * Admin signs off as the second-stage approver. Transitions PENDING_ADMIN →
+ * ACTIVE, stamps the admin audit fields, and triggers the email-verification
+ * flow so the new user receives a "verify your email" link the moment their
+ * account becomes usable.
+ */
+export async function approveAtAdminStage(id: string, adminId: string): Promise<FullShape> {
+  const u = await User.findById(id);
+  if (!u) throw new NotFoundError("Candidate");
+  if (u.approvalStatus !== "PENDING_ADMIN") {
+    throw new ConflictError(
+      `Candidate is not awaiting Admin approval (status: ${u.approvalStatus})`,
+    );
+  }
+  u.approvalStatus = "ACTIVE";
+  u.adminApprovedById = new Types.ObjectId(adminId);
+  u.adminApprovedAt = new Date();
+  await u.save();
+
+  // Best-effort: kick off email verification so the new user receives a
+  // verification link the moment their account flips to ACTIVE. Mail-driver
+  // failures are logged and swallowed; admins can resend manually.
+  try {
+    await requestEmailVerification(u._id.toString());
+  } catch (err) {
+    logger.warn(
+      { email: u.email, err: (err as Error).message },
+      "post-approval verification email failed; admin may resend later",
+    );
+  }
+
+  const deptName = await loadDepartmentName(u.departmentId);
+  return toFullProfile(u, deptName);
+}
+
+/**
+ * Reject a candidate at either pending stage. HR can only reject candidates
+ * that are still in HR review; Admin can reject from either queue. Optional
+ * `notes` are stored on `approvalNotes` so the rationale survives in the audit
+ * trail (HR/Admin can read them via the full profile).
+ */
+export async function rejectCandidate(
+  id: string,
+  byUserId: string,
+  byRole: Role,
+  notes?: string,
+): Promise<FullShape> {
+  const u = await User.findById(id);
+  if (!u) throw new NotFoundError("Candidate");
+  if (u.approvalStatus !== "PENDING_HR" && u.approvalStatus !== "PENDING_ADMIN") {
+    throw new ConflictError(`Candidate cannot be rejected from status: ${u.approvalStatus}`);
+  }
+  if (byRole === "HR" && u.approvalStatus !== "PENDING_HR") {
+    throw new ForbiddenError("HR can only reject candidates awaiting HR review");
+  }
+  if (byRole !== "HR" && byRole !== "ADMIN") {
+    throw new ForbiddenError("Only HR or Admin can reject candidates");
+  }
+  u.approvalStatus = "REJECTED";
+  u.rejectedById = new Types.ObjectId(byUserId);
+  u.rejectedAt = new Date();
+  u.approvalNotes = notes ?? null;
+  await u.save();
+
+  logger.info(
+    { id: u._id.toString(), email: u.email, byUserId, byRole },
+    "candidate rejected",
+  );
+
+  const deptName = await loadDepartmentName(u.departmentId);
+  return toFullProfile(u, deptName);
 }
 
 const SELF_EDITABLE = new Set(["name", "phone", "bio", "dateOfBirth", "address", "emergencyContact"]);

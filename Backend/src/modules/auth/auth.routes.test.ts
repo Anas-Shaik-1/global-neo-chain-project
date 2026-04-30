@@ -35,6 +35,7 @@ async function seedAdmin() {
     passwordHash: await bcrypt.hash("ChangeMe-Admin-1!", 4),
     name: "Admin",
     role: "ADMIN",
+    approvalStatus: "ACTIVE",
   });
 }
 

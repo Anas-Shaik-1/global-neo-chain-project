@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { registry } from "../../openapi/registry.js";
-import { ROLES, EMPLOYMENT_TYPES } from "../../models/user.model.js";
+import { ROLES, EMPLOYMENT_TYPES, APPROVAL_STATUSES } from "../../models/user.model.js";
 
 const objectIdString = z
   .string()
@@ -22,12 +22,14 @@ export const PublicProfile = z
     role: z.enum(ROLES),
     isProjectManager: z.boolean(),
     isActive: z.boolean(),
+    approvalStatus: z.enum(APPROVAL_STATUSES),
     jobTitle: z.string().nullable().optional(),
     departmentId: z.string().nullable().optional(),
     departmentName: z.string().nullable().optional(),
     phone: z.string().nullable().optional(),
     avatarUrl: z.string().nullable().optional(),
     bio: z.string().nullable().optional(),
+    createdAt: z.string().datetime().optional(),
   })
   .openapi("PublicProfile");
 
@@ -38,6 +40,10 @@ export const FullProfile = PublicProfile.extend({
   employmentType: z.enum(EMPLOYMENT_TYPES).nullable().optional(),
   emergencyContact: EmergencyContact.nullable().optional(),
   resumeUrl: z.string().nullable().optional(),
+  approvalNotes: z.string().nullable().optional(),
+  hrApprovedAt: z.string().datetime().nullable().optional(),
+  adminApprovedAt: z.string().datetime().nullable().optional(),
+  rejectedAt: z.string().datetime().nullable().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 }).openapi("FullProfile");
@@ -51,15 +57,15 @@ export const ListEmployeesResponse = z
   })
   .openapi("ListEmployeesResponse");
 
-export const CreateEmployeeBody = z
+// CreateEmployeeBody intentionally removed: HR no longer creates users
+// directly. New users self-register via POST /auth/register and flow through
+// the 2-stage HR/Admin approval pipeline (see /employees/candidates routes).
+
+export const RejectCandidateBody = z
   .object({
-    email: z.string().email(),
-    name: z.string().min(1).max(100),
-    role: z.enum(ROLES).default("EMPLOYEE"),
-    jobTitle: z.string().max(100).optional(),
-    departmentId: objectIdString.optional(),
+    notes: z.string().max(500).optional(),
   })
-  .openapi("CreateEmployeeBody");
+  .openapi("RejectCandidateBody");
 
 export const UpdateEmployeeBody = z
   .object({
@@ -148,15 +154,68 @@ registry.registerPath({
   },
 });
 
+// Approval workflow OpenAPI ----------------------------------------------
+
 registry.registerPath({
-  method: "post",
-  path: "/employees",
+  method: "get",
+  path: "/employees/candidates",
   tags: ["employees"],
   security: sec,
-  request: { body: { content: { "application/json": { schema: CreateEmployeeBody } } } },
+  request: {
+    query: z.object({
+      stage: z.enum(["hr", "admin"]),
+      page: z.coerce.number().int().positive().optional(),
+      limit: z.coerce.number().int().positive().max(100).optional(),
+    }),
+  },
   responses: {
-    201: { description: "Created", ...json(FullProfile) },
-    409: { description: "Email exists", ...json(ErrorRef) },
+    200: { description: "OK", ...json(ListEmployeesResponse) },
+    403: { description: "Forbidden", ...json(ErrorRef) },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/employees/{id}/approve-hr",
+  tags: ["employees"],
+  security: sec,
+  request: { params: z.object({ id: objectIdString }) },
+  responses: {
+    200: { description: "Approved at HR stage", ...json(FullProfile) },
+    403: { description: "Forbidden", ...json(ErrorRef) },
+    404: { description: "Not found", ...json(ErrorRef) },
+    409: { description: "Wrong stage", ...json(ErrorRef) },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/employees/{id}/approve-admin",
+  tags: ["employees"],
+  security: sec,
+  request: { params: z.object({ id: objectIdString }) },
+  responses: {
+    200: { description: "Approved at Admin stage", ...json(FullProfile) },
+    403: { description: "Forbidden", ...json(ErrorRef) },
+    404: { description: "Not found", ...json(ErrorRef) },
+    409: { description: "Wrong stage", ...json(ErrorRef) },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/employees/{id}/reject",
+  tags: ["employees"],
+  security: sec,
+  request: {
+    params: z.object({ id: objectIdString }),
+    body: { content: { "application/json": { schema: RejectCandidateBody } } },
+  },
+  responses: {
+    200: { description: "Rejected", ...json(FullProfile) },
+    403: { description: "Forbidden", ...json(ErrorRef) },
+    404: { description: "Not found", ...json(ErrorRef) },
+    409: { description: "Wrong stage", ...json(ErrorRef) },
   },
 });
 

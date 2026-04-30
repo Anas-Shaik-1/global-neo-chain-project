@@ -33,33 +33,11 @@ export const departmentCodeSchema = z
   .max(30, "Code must be 30 characters or fewer")
   .regex(/^[a-z0-9-]+$/, "Lowercase letters, numbers, and hyphens only");
 
-const objectIdRegex = /^[a-f\d]{24}$/i;
-const objectIdOrEmpty = z
-  .string()
-  .regex(objectIdRegex, "Invalid id")
-  .or(z.literal(""))
-  .optional();
-
-const emailSchema = z
-  .string()
-  .min(1, "Email is required")
-  .email("Enter a valid email address")
-  .max(120);
-
 // Concrete form schemas ----------------------------------------------------
 
-export const CreateEmployeeSchema = z.object({
-  email: emailSchema,
-  name: nameSchema,
-  role: z.enum(["EMPLOYEE", "HR", "ADMIN"]),
-  jobTitle: z
-    .string()
-    .max(100, "Job title must be 100 characters or fewer")
-    .or(z.literal(""))
-    .optional(),
-  departmentId: objectIdOrEmpty,
-});
-export type CreateEmployeeValues = z.infer<typeof CreateEmployeeSchema>;
+// Note: the legacy CreateEmployeeSchema was removed when the
+// self-registration + 2-stage approval pipeline replaced HR-creates-employee.
+// New users go through `RegisterSchema` in features/auth/schemas.
 
 export const ProfileEditSchema = z.object({
   name: nameSchema,

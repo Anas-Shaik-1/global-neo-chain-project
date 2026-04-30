@@ -49,7 +49,7 @@ describe("PeopleListPage", () => {
     expect(screen.getByText("Bob")).toBeInTheDocument();
   });
 
-  it("HR sees the New employee button", async () => {
+  it("HR sees the Review candidates button", async () => {
     mock.onGet("/employees").reply(200, { items: [], total: 0, page: 1, limit: 50 });
     render(
       <Provider store={store}>
@@ -58,6 +58,6 @@ describe("PeopleListPage", () => {
         </QueryClientProvider>
       </Provider>,
     );
-    expect(await screen.findByRole("link", { name: /new employee/i })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /review candidates/i })).toBeInTheDocument();
   });
 });

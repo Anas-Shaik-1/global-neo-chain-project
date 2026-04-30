@@ -1,6 +1,6 @@
 import bcrypt from "bcrypt";
 import { Types, type HydratedDocument } from "mongoose";
-import { User, type Role, type UserDoc } from "../../models/user.model.js";
+import { User, type Role, type UserDoc, type ApprovalStatus } from "../../models/user.model.js";
 import { RefreshToken } from "../../models/refreshToken.model.js";
 import {
   signAccessToken,
@@ -9,6 +9,12 @@ import {
   newJti,
 } from "../../lib/tokens.js";
 import { UnauthorizedError } from "../../lib/errors.js";
+
+const APPROVAL_BLOCK_MESSAGES: Record<Exclude<ApprovalStatus, "ACTIVE">, string> = {
+  PENDING_HR: "Your account is awaiting HR approval",
+  PENDING_ADMIN: "Your account is awaiting Admin approval",
+  REJECTED: "Your account application was not approved",
+};
 
 // Mirror of JWT_REFRESH_TTL ("7d") expressed in ms for the DB expiresAt index.
 // If you change JWT_REFRESH_TTL in env, update this too.
@@ -58,6 +64,11 @@ function toPublicUser(user: FullUser): PublicUser {
  * Verifies email + password and returns the user document. Does NOT issue tokens
  * and does NOT enforce 2FA — the controller decides whether to issue tokens
  * directly (no 2FA) or branch to the requires-2FA flow.
+ *
+ * After a successful credential check, this also enforces the 2-stage approval
+ * pipeline: only `approvalStatus === "ACTIVE"` users may complete login. The
+ * thrown message is surfaced verbatim by the FE login form, so the user knows
+ * exactly which queue they're sitting in.
  */
 export async function loginCheckCredentials(email: string, password: string): Promise<FullUser> {
   const user = (await User.findOne({ email: email.toLowerCase() }).select("+passwordHash")) as FullUser | null;
@@ -65,6 +76,13 @@ export async function loginCheckCredentials(email: string, password: string): Pr
 
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) throw new UnauthorizedError("Invalid credentials");
+
+  if (user.approvalStatus !== "ACTIVE") {
+    const message =
+      APPROVAL_BLOCK_MESSAGES[user.approvalStatus as Exclude<ApprovalStatus, "ACTIVE">] ??
+      "Account is not active";
+    throw new UnauthorizedError(message);
+  }
 
   return user;
 }

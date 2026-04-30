@@ -9,6 +9,7 @@ export const NOTIFICATION_KINDS = [
   "EMPLOYEE_VERIFIED",
   "DEPARTMENT_ASSIGNMENT",
   "PROMOTED_TO_PM",
+  "CANDIDATE_AWAITING_REVIEW",
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 

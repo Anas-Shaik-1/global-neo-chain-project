@@ -40,11 +40,58 @@ export async function getOne(req: Request, res: Response, next: NextFunction) {
   }
 }
 
-export async function postCreate(req: Request, res: Response, next: NextFunction) {
+// NOTE: the legacy `postCreate` (HR-creates-employee) handler was removed when
+// the self-registration + 2-stage approval pipeline went in. New users must go
+// through POST /auth/register (registration module).
+
+export async function getCandidates(req: Request, res: Response, next: NextFunction) {
   try {
-    const body = req.validated as svc.CreateInput;
-    const out = await svc.createEmployee(body);
-    res.status(201).json(out.profile);
+    const me = requireUser(req);
+    const stageRaw = typeof req.query.stage === "string" ? req.query.stage : "hr";
+    if (stageRaw !== "hr" && stageRaw !== "admin") {
+      throw new ValidationError("stage must be 'hr' or 'admin'");
+    }
+    if (stageRaw === "admin" && me.role !== "ADMIN") {
+      throw new ForbiddenError("Only Admin can view the admin candidate queue");
+    }
+    const page = typeof req.query.page === "string" ? Number(req.query.page) : undefined;
+    const limit = typeof req.query.limit === "string" ? Number(req.query.limit) : undefined;
+    const result = await svc.listCandidates({ stage: stageRaw, page, limit });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function postApproveHr(req: Request, res: Response, next: NextFunction) {
+  try {
+    const me = requireUser(req);
+    const id = req.params.id as string;
+    const out = await svc.approveAtHrStage(id, me.id);
+    res.json(out);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function postApproveAdmin(req: Request, res: Response, next: NextFunction) {
+  try {
+    const me = requireUser(req);
+    const id = req.params.id as string;
+    const out = await svc.approveAtAdminStage(id, me.id);
+    res.json(out);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function postReject(req: Request, res: Response, next: NextFunction) {
+  try {
+    const me = requireUser(req);
+    const id = req.params.id as string;
+    const body = (req.validated ?? req.body) as { notes?: string };
+    const out = await svc.rejectCandidate(id, me.id, me.role, body?.notes);
+    res.json(out);
   } catch (err) {
     next(err);
   }

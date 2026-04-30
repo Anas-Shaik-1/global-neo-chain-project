@@ -34,6 +34,7 @@ async function seedUser(role: "ADMIN" | "HR" | "EMPLOYEE" = "EMPLOYEE", override
     role,
     dateOfBirth: new Date("1990-01-01"),
     address: "secret",
+    approvalStatus: "ACTIVE",
     ...overrides,
   });
 }
@@ -71,18 +72,58 @@ describe("employees.service projection helpers", () => {
   });
 });
 
-describe("employees.service create", () => {
-  it("createEmployee creates user with random password and returns full profile + temp password", async () => {
-    const { createEmployee } = await import("./employees.service.js");
-    const out = await createEmployee({ email: "n@b.com", name: "New", role: "EMPLOYEE" });
-    expect(out.profile.email).toBe("n@b.com");
-    expect(out.tempPassword).toMatch(/.{16,}/);
+describe("employees.service approval workflow", () => {
+  it("listCandidates(hr) returns only PENDING_HR users", async () => {
+    await seedUser("EMPLOYEE", { approvalStatus: "PENDING_HR" });
+    await seedUser("EMPLOYEE", { approvalStatus: "PENDING_HR" });
+    await seedUser("EMPLOYEE", { approvalStatus: "PENDING_ADMIN" });
+    await seedUser("EMPLOYEE", { approvalStatus: "ACTIVE" });
+    const { listCandidates } = await import("./employees.service.js");
+    const out = await listCandidates({ stage: "hr" });
+    expect(out.total).toBe(2);
+    expect(out.items.every((u) => u.approvalStatus === "PENDING_HR")).toBe(true);
   });
 
-  it("createEmployee on duplicate email throws ConflictError", async () => {
-    const { createEmployee } = await import("./employees.service.js");
-    await createEmployee({ email: "dupe@b.com", name: "A", role: "EMPLOYEE" });
-    await expect(createEmployee({ email: "dupe@b.com", name: "B", role: "EMPLOYEE" })).rejects.toThrow();
+  it("approveAtHrStage transitions PENDING_HR → PENDING_ADMIN and stamps hrApprovedAt", async () => {
+    const candidate = await seedUser("EMPLOYEE", { approvalStatus: "PENDING_HR" });
+    const hr = await seedUser("HR");
+    const { approveAtHrStage } = await import("./employees.service.js");
+    const out = await approveAtHrStage(candidate._id.toString(), hr._id.toString());
+    expect(out.approvalStatus).toBe("PENDING_ADMIN");
+    expect(out.hrApprovedAt).toBeInstanceOf(Date);
+  });
+
+  it("approveAtAdminStage transitions PENDING_ADMIN → ACTIVE and stamps adminApprovedAt", async () => {
+    const candidate = await seedUser("EMPLOYEE", { approvalStatus: "PENDING_ADMIN" });
+    const admin = await seedUser("ADMIN");
+    const { approveAtAdminStage } = await import("./employees.service.js");
+    const out = await approveAtAdminStage(candidate._id.toString(), admin._id.toString());
+    expect(out.approvalStatus).toBe("ACTIVE");
+    expect(out.adminApprovedAt).toBeInstanceOf(Date);
+  });
+
+  it("rejectCandidate sets approvalStatus=REJECTED with notes", async () => {
+    const candidate = await seedUser("EMPLOYEE", { approvalStatus: "PENDING_HR" });
+    const hr = await seedUser("HR");
+    const { rejectCandidate } = await import("./employees.service.js");
+    const out = await rejectCandidate(
+      candidate._id.toString(),
+      hr._id.toString(),
+      "HR",
+      "Not a fit",
+    );
+    expect(out.approvalStatus).toBe("REJECTED");
+    expect(out.approvalNotes).toBe("Not a fit");
+    expect(out.rejectedAt).toBeInstanceOf(Date);
+  });
+
+  it("approveAtHrStage on already-active user throws ConflictError", async () => {
+    const active = await seedUser("EMPLOYEE", { approvalStatus: "ACTIVE" });
+    const hr = await seedUser("HR");
+    const { approveAtHrStage } = await import("./employees.service.js");
+    await expect(
+      approveAtHrStage(active._id.toString(), hr._id.toString()),
+    ).rejects.toThrow();
   });
 });
 

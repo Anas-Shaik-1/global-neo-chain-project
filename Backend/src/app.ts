@@ -11,6 +11,7 @@ import { errorHandler } from "./middleware/error.js";
 import { globalLimiter } from "./middleware/rateLimit.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
 import { authExtensionsRouter } from "./modules/authExtensions/authExtensions.routes.js";
+import { registrationRouter } from "./modules/registration/registration.routes.js";
 import { healthRouter } from "./modules/health/health.routes.js";
 import { employeesRouter, positionsRouter } from "./modules/employees/employees.routes.js";
 import { departmentsRouter } from "./modules/departments/departments.routes.js";
@@ -24,6 +25,7 @@ import { dashboardRouter } from "./modules/dashboard/dashboard.routes.js";
 import { notificationsRouter } from "./modules/notifications/notifications.routes.js";
 import "./modules/auth/auth.schema.js";
 import "./modules/authExtensions/authExtensions.schema.js";
+import "./modules/registration/registration.schema.js";
 import "./modules/employees/employees.schema.js";
 import "./modules/departments/departments.schema.js";
 import "./modules/attendance/attendance.schema.js";
@@ -59,6 +61,9 @@ export function createApp() {
   // Auth-extensions (password reset, force-change, TOTP 2FA) live under the
   // same /auth prefix; Express dispatches by path so they don't collide.
   app.use("/auth", authExtensionsRouter);
+  // Public self-registration + status lookup. Mounted under /auth so the
+  // entire authentication surface lives in one place from a routing pov.
+  app.use("/auth", registrationRouter);
   app.use("/employees", employeesRouter);
   app.use("/positions", positionsRouter);
   app.use("/departments", departmentsRouter);
