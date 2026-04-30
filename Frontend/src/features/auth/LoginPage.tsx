@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import {
   Form,
   FormControl,
@@ -146,8 +147,7 @@ export function LoginPage() {
                     Password
                   </FormLabel>
                   <FormControl>
-                    <Input
-                      type="password"
+                    <PasswordInput
                       autoComplete="current-password"
                       className="h-11"
                       {...field}
@@ -239,31 +239,6 @@ export function LoginPage() {
             </button>
           </form>
         </Form>
-      )}
-
-      {import.meta.env.DEV && stage === "credentials" && (
-        <details className="group rounded-lg border border-border/40 bg-muted/20 px-4 py-3 transition-colors hover:bg-muted/30">
-          <summary className="cursor-pointer list-none text-xs font-medium text-muted-foreground">
-            <span className="flex items-center justify-between">
-              <span>Show demo accounts</span>
-              <span className="transition-transform group-open:rotate-180">▾</span>
-            </span>
-          </summary>
-          <div className="mt-3 space-y-1 font-mono text-[11px] leading-relaxed text-muted-foreground">
-            <div>
-              <span className="text-primary">ADMIN</span>     admin@global-neochain.local      ChangeMe-Admin-1!
-            </div>
-            <div>
-              <span className="text-primary">HR</span>        hr@global-neochain.local         ChangeMe-HR-1!
-            </div>
-            <div>
-              <span className="text-primary">EMP+PM</span>    pm@global-neochain.local         ChangeMe-PM-1!
-            </div>
-            <div>
-              <span className="text-primary">EMPLOYEE</span>  employee@global-neochain.local   ChangeMe-Employee-1!
-            </div>
-          </div>
-        </details>
       )}
 
       <p className="text-center text-xs text-muted-foreground">

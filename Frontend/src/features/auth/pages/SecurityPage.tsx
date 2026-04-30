@@ -10,6 +10,7 @@ import { useAppDispatch, useAppSelector } from "@/app/hooks";
 import { sessionEstablished } from "@/features/auth/authSlice";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import {
   Form,
   FormControl,
@@ -287,7 +288,7 @@ export function SecurityPage() {
                   <FormItem>
                     <FormLabel>Password</FormLabel>
                     <FormControl>
-                      <Input type="password" autoComplete="current-password" {...field} />
+                      <PasswordInput autoComplete="current-password" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

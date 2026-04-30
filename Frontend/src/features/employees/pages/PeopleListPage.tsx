@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -14,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PageHeader } from "@/components/common/PageHeader";
+import { SearchBar } from "@/components/common/SearchBar";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { useEmployeesList } from "../api/hooks";
 import { useAppSelector } from "@/app/hooks";
@@ -40,11 +40,11 @@ export function PeopleListPage() {
 
       <Card>
         <CardContent className="space-y-4 pt-6">
-          <Input
-            placeholder="Search by name or email…"
+          <SearchBar
             value={q}
-            onChange={(e) => setQ(e.target.value)}
-            aria-label="Search employees"
+            onChange={setQ}
+            placeholder="Search by name or email…"
+            ariaLabel="Search employees"
           />
           {isLoading || !data ? (
             <Skeleton className="h-64 w-full" />

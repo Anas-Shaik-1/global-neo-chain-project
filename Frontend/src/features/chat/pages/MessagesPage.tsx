@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/common/PageHeader";
+import { SearchBar } from "@/components/common/SearchBar";
 import { useAppSelector } from "@/app/hooks";
 import {
   chatKeys,
@@ -29,6 +30,7 @@ export function MessagesPage() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
+  const [search, setSearch] = useState("");
 
   const conversations = useConversations();
   const messages = useMessages(selectedId ?? undefined, { limit: 50 });
@@ -38,6 +40,16 @@ export function MessagesPage() {
     () => (conversations.data ?? []).find((c) => c.id === selectedId) ?? null,
     [conversations.data, selectedId],
   );
+
+  const filteredConversations = useMemo(() => {
+    const all = conversations.data ?? [];
+    const t = search.trim().toLowerCase();
+    if (!t) return all;
+    return all.filter((c) => {
+      const other = c.participants.find((p) => p.id !== me?.id) ?? c.participants[0];
+      return (other?.name ?? "").toLowerCase().includes(t);
+    });
+  }, [conversations.data, search, me?.id]);
 
   // Auto-select the first conversation once loaded.
   useEffect(() => {
@@ -92,10 +104,16 @@ export function MessagesPage() {
 
       <div className="grid h-[calc(100vh-16rem)] grid-cols-1 overflow-hidden rounded-lg border border-border bg-card md:grid-cols-[20rem_1fr]">
         <aside className="flex flex-col border-b border-border md:border-b-0 md:border-r">
-          <div className="border-b border-border p-3">
+          <div className="space-y-2 border-b border-border p-3">
             <Button className="w-full" onClick={() => setShowNew(true)}>
               + New conversation
             </Button>
+            <SearchBar
+              value={search}
+              onChange={setSearch}
+              placeholder="Search conversations…"
+              ariaLabel="Search conversations"
+            />
           </div>
           <div className="flex-1 overflow-y-auto">
             {conversations.isLoading ? (
@@ -106,7 +124,7 @@ export function MessagesPage() {
               </div>
             ) : (
               <ConversationList
-                conversations={conversations.data ?? []}
+                conversations={filteredConversations}
                 meId={me?.id}
                 selectedId={selectedId}
                 onSelect={setSelectedId}

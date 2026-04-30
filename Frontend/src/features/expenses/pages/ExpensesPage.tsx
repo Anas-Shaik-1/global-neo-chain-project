@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/common/PageHeader";
+import { SearchBar } from "@/components/common/SearchBar";
 import { useAppSelector } from "@/app/hooks";
 import {
   EXPENSE_STATUSES,
@@ -50,26 +51,48 @@ function StatusFilter({
   );
 }
 
+function filterBySearch(items: Expense[], term: string): Expense[] {
+  const t = term.trim().toLowerCase();
+  if (!t) return items;
+  return items.filter((e) =>
+    [e.description, e.category, e.userName ?? ""]
+      .some((field) => field.toLowerCase().includes(t)),
+  );
+}
+
 function MyExpensesTab() {
   const [status, setStatus] = useState<ExpenseStatus | "ALL">("ALL");
+  const [search, setSearch] = useState("");
   const params = useMemo(
     () => (status === "ALL" ? { limit: 100 } : { status, limit: 100 }),
     [status],
   );
   const q = useMyExpenses(params);
+  const items = q.data?.items ?? [];
+  const filtered = useMemo(() => filterBySearch(items, search), [items, search]);
   return (
     <Card>
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <CardTitle>My expenses</CardTitle>
         <StatusFilter value={status} onChange={setStatus} />
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
+        <SearchBar
+          value={search}
+          onChange={setSearch}
+          placeholder="Filter by description or category…"
+          ariaLabel="Search my expenses"
+        />
         {q.isLoading || !q.data ? (
           <Skeleton className="h-32 w-full" />
         ) : (
           <ExpensesTable
-            expenses={q.data.items}
-            emptyState="You haven't submitted any expenses yet."
+            expenses={filtered}
+            emptyState={
+              search
+                ? "No expenses match your search."
+                : "You haven't submitted any expenses yet."
+            }
           />
         )}
       </CardContent>
@@ -85,23 +108,32 @@ function ApprovalQueueTab({
   onReject: (e: Expense) => void;
 }) {
   const [status, setStatus] = useState<ExpenseStatus | "ALL">("PENDING");
+  const [search, setSearch] = useState("");
   const params = useMemo(
     () => (status === "ALL" ? { limit: 100 } : { status, limit: 100 }),
     [status],
   );
   const q = useAllExpenses(params);
+  const items = q.data?.items ?? [];
+  const filtered = useMemo(() => filterBySearch(items, search), [items, search]);
   return (
     <Card>
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <CardTitle>All expenses</CardTitle>
         <StatusFilter value={status} onChange={setStatus} />
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
+        <SearchBar
+          value={search}
+          onChange={setSearch}
+          placeholder="Filter by description, category, or submitter…"
+          ariaLabel="Search all expenses"
+        />
         {q.isLoading || !q.data ? (
           <Skeleton className="h-32 w-full" />
         ) : (
           <ExpensesTable
-            expenses={q.data.items}
+            expenses={filtered}
             showOwner
             onApprove={onApprove}
             onReject={onReject}

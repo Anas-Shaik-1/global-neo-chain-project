@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Check, Circle } from "lucide-react";
 import { getApi } from "@/api/axios";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import {
   Form,
   FormControl,
@@ -101,8 +101,7 @@ export function ResetPasswordPage() {
                   New password
                 </FormLabel>
                 <FormControl>
-                  <Input
-                    type="password"
+                  <PasswordInput
                     autoComplete="new-password"
                     className="h-11"
                     {...field}
@@ -144,8 +143,7 @@ export function ResetPasswordPage() {
                   Confirm new password
                 </FormLabel>
                 <FormControl>
-                  <Input
-                    type="password"
+                  <PasswordInput
                     autoComplete="new-password"
                     className="h-11"
                     {...field}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +14,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { PageHeader } from "@/components/common/PageHeader";
+import { SearchBar } from "@/components/common/SearchBar";
 import { useDepartmentsList, useCreateDepartment } from "../api/hooks";
 import { CreateDepartmentSchema, type CreateDepartmentValues } from "../schemas";
 
@@ -21,11 +22,21 @@ export function DepartmentsPage() {
   const list = useDepartmentsList();
   const create = useCreateDepartment();
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const form = useForm<CreateDepartmentValues>({
     resolver: zodResolver(CreateDepartmentSchema),
     defaultValues: { name: "", code: "" },
   });
+
+  const filtered = useMemo(() => {
+    const all = list.data?.items ?? [];
+    const t = search.trim().toLowerCase();
+    if (!t) return all;
+    return all.filter(
+      (d) => d.name.toLowerCase().includes(t) || d.code.toLowerCase().includes(t),
+    );
+  }, [list.data?.items, search]);
 
   function onCreate(values: CreateDepartmentValues) {
     setError(null);
@@ -97,9 +108,19 @@ export function DepartmentsPage() {
 
       <Card>
         <CardHeader><CardTitle>Departments</CardTitle></CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          <SearchBar
+            value={search}
+            onChange={setSearch}
+            placeholder="Filter by name or code…"
+            ariaLabel="Search departments"
+          />
           {list.isLoading || !list.data ? (
             <Skeleton className="h-32 w-full" />
+          ) : filtered.length === 0 ? (
+            <div className="rounded-md border border-dashed border-border px-4 py-12 text-center text-sm text-muted-foreground">
+              {search ? "No departments match your search." : "No departments yet."}
+            </div>
           ) : (
             <table className="w-full text-sm">
               <thead>
@@ -111,7 +132,7 @@ export function DepartmentsPage() {
                 </tr>
               </thead>
               <tbody>
-                {list.data.items.map((d) => (
+                {filtered.map((d) => (
                   <tr key={d.id} className="border-b border-border/50">
                     <td className="py-2">{d.name}</td>
                     <td>{d.code}</td>

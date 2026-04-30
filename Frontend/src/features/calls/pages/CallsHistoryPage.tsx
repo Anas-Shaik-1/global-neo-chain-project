@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ArrowDownLeft, ArrowUpRight, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PageHeader } from "@/components/common/PageHeader";
+import { SearchBar } from "@/components/common/SearchBar";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { useAppSelector } from "@/app/hooks";
 import {
@@ -105,6 +106,17 @@ export function CallsHistoryPage() {
   const history = useCallHistory(50);
   const { start } = useCall();
   const [showNew, setShowNew] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const filteredCalls = useMemo(() => {
+    const all = history.data ?? [];
+    const t = search.trim().toLowerCase();
+    if (!t) return all;
+    return all.filter((c) => {
+      const peer = c.caller.id === me?.id ? c.callee : c.caller;
+      return peer.name.toLowerCase().includes(t);
+    });
+  }, [history.data, search, me?.id]);
 
   return (
     <div className="space-y-6">
@@ -119,6 +131,16 @@ export function CallsHistoryPage() {
         }
       />
 
+      {!history.isLoading && (history.data ?? []).length > 0 && (
+        <SearchBar
+          value={search}
+          onChange={setSearch}
+          placeholder="Filter calls by peer name…"
+          ariaLabel="Search calls"
+          className="max-w-md"
+        />
+      )}
+
       <div className="overflow-hidden rounded-lg border border-border bg-card">
         {history.isLoading ? (
           <div className="space-y-2 p-4">
@@ -129,6 +151,10 @@ export function CallsHistoryPage() {
         ) : (history.data ?? []).length === 0 ? (
           <div className="px-6 py-12 text-center text-sm text-muted-foreground">
             No calls yet. Start a new call to ring a teammate.
+          </div>
+        ) : filteredCalls.length === 0 ? (
+          <div className="px-6 py-12 text-center text-sm text-muted-foreground">
+            No calls match your search.
           </div>
         ) : (
           <Table>
@@ -142,7 +168,7 @@ export function CallsHistoryPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(history.data ?? []).map((c) => (
+              {filteredCalls.map((c) => (
                 <CallRow key={c.id} call={c} meId={me?.id} />
               ))}
             </TableBody>

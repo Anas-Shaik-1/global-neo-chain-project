@@ -1,4 +1,4 @@
-import { Bell, LogOut, Moon, Search, ShieldCheck, Sun, User } from "lucide-react";
+import { Bell, LogOut, Moon, ShieldCheck, Sun, User } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "@/app/hooks";
 import { themeChanged } from "@/features/ui/uiSlice";
@@ -13,6 +13,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Separator } from "@/components/ui/separator";
+import { Logo } from "@/components/brand/Logo";
 
 export function Topbar() {
   const dispatch = useAppDispatch();
@@ -26,19 +28,11 @@ export function Topbar() {
     .toUpperCase() ?? "??";
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card/60 px-4 backdrop-blur lg:px-6">
-      <button
-        type="button"
-        aria-label="Search"
-        className="group flex h-9 w-full max-w-md items-center gap-2 rounded-md border border-input bg-background/60 px-3 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
-      >
-        <Search className="h-4 w-4 shrink-0" />
-        <span className="flex-1 text-left">Search people, tasks, expenses…</span>
-        <kbd className="hidden items-center gap-0.5 rounded border border-border/60 bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground sm:inline-flex">
-          <span>⌘</span>K
-        </kbd>
-      </button>
-      <div className="ml-auto flex items-center gap-1.5">
+    <header className="relative flex h-14 shrink-0 items-center gap-4 border-b border-border bg-card px-4 lg:px-6">
+      <Logo isClickable />
+      <Separator orientation="vertical" className="hidden h-6 lg:block" />
+      <div className="flex-1" />
+      <div className="flex items-center gap-1.5">
         <Button
           variant="ghost"
           size="icon"
@@ -91,6 +85,11 @@ export function Topbar() {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      {/* Subtle hairline accent below header */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 -bottom-px h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent"
+      />
     </header>
   );
 }

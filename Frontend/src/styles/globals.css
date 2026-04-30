@@ -61,6 +61,20 @@
   }
   h1, h2, h3, h4 { font-family: theme(fontFamily.display); letter-spacing: -0.02em; }
   code, pre { font-family: theme(fontFamily.mono); }
+
+  /* Suppress Edge/IE password reveal (we render our own toggle in PasswordInput) */
+  input[type="password"]::-ms-reveal,
+  input[type="password"]::-ms-clear {
+    display: none;
+  }
+  /* Suppress WebKit's contacts/credentials autofill button overlay */
+  input[type="password"]::-webkit-credentials-auto-fill-button,
+  input[type="password"]::-webkit-strong-password-auto-fill-button {
+    visibility: hidden;
+    pointer-events: none;
+    position: absolute;
+    right: 0;
+  }
 }
 
 @layer base {

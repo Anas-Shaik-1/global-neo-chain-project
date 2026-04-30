@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { toast } from "sonner";
@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/common/PageHeader";
+import { SearchBar } from "@/components/common/SearchBar";
 import {
   Select,
   SelectContent,
@@ -63,6 +64,14 @@ export function TasksPage() {
   const [showCreateTask, setShowCreateTask] = useState(false);
   const [createTaskInitialStatus, setCreateTaskInitialStatus] = useState<TaskStatus | undefined>(undefined);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [search, setSearch] = useState("");
+
+  const filteredTasks = useMemo(() => {
+    const all = tasksQ.data ?? [];
+    const t = search.trim().toLowerCase();
+    if (!t) return all;
+    return all.filter((task) => task.title.toLowerCase().includes(t));
+  }, [tasksQ.data, search]);
 
   // Auto-select first project once projects load.
   useEffect(() => {
@@ -132,7 +141,16 @@ export function TasksPage() {
       />
 
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="space-y-4 pt-6">
+          {hasProjects && !projectsQ.isLoading && (
+            <SearchBar
+              value={search}
+              onChange={setSearch}
+              placeholder="Filter tasks by title…"
+              ariaLabel="Search tasks"
+              className="max-w-md"
+            />
+          )}
           {projectsQ.isLoading ? (
             <KanbanSkeleton />
           ) : !hasProjects ? (
@@ -143,7 +161,7 @@ export function TasksPage() {
             <KanbanSkeleton />
           ) : (
             <KanbanBoard
-              tasks={tasksQ.data}
+              tasks={filteredTasks}
               onCardClick={(t) => setActiveTask(t)}
               onColumnAdd={onColumnAdd}
               onTaskMove={(taskId, status) => moveTask.mutate({ taskId, status })}
