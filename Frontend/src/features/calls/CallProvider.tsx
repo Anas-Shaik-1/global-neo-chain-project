@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import SimplePeer from "simple-peer";
+import { toast } from "sonner";
 import { useAppSelector } from "@/app/hooks";
 import {
   connectCallsSocket,
@@ -59,10 +60,13 @@ export interface CallContextValue {
   remoteStream: MediaStream | null;
   controls: CallControls;
   error: string | null;
+  screenSharing: boolean;
   start: (calleeId: string, calleeName: string) => Promise<void>;
   accept: () => Promise<void>;
   reject: () => void;
   end: () => void;
+  startScreenShare: () => Promise<void>;
+  stopScreenShare: () => Promise<void>;
 }
 
 const CallContext = createContext<CallContextValue | null>(null);
@@ -92,6 +96,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [screenSharing, setScreenSharing] = useState(false);
 
   const peerRef = useRef<SimplePeer.Instance | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -124,6 +129,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     pendingIncomingRef.current = null;
     setMuted(false);
     setCameraOff(false);
+    setScreenSharing(false);
   }, [stopLocalStream]);
 
   const finishCall = useCallback(
@@ -462,6 +468,111 @@ export function CallProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  // stopScreenShare is referenced by the screenTrack.onended callback that's
+  // assigned inside startScreenShare; keep the latest reference in a ref so
+  // the callback always points at the current closure. Declared up front so
+  // startScreenShare can capture it lexically.
+  const stopScreenShareRef = useRef<(() => Promise<void>) | null>(null);
+
+  // Screen share uses navigator.mediaDevices.getDisplayMedia which is supported
+  // on Chrome/Edge/Firefox/Safari (modern) over HTTPS or on localhost.
+  // We swap the outgoing video track via RTCRtpSender.replaceTrack so the peer
+  // sees the screen feed transparently without renegotiation.
+  const startScreenShare = useCallback(async (): Promise<void> => {
+    const peer = peerRef.current;
+    if (!peer) return;
+    if (screenSharing) return;
+    let screenStream: MediaStream;
+    try {
+      screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: "always" } as MediaTrackConstraints,
+        audio: false,
+      });
+    } catch {
+      toast.error("Could not start screen share");
+      return;
+    }
+    const screenTrack = screenStream.getVideoTracks()[0];
+    if (!screenTrack) {
+      for (const t of screenStream.getTracks()) t.stop();
+      return;
+    }
+    const pc = (peer as unknown as { _pc?: RTCPeerConnection })._pc;
+    const sender = pc?.getSenders().find((s) => s.track?.kind === "video");
+    if (sender) {
+      try {
+        await sender.replaceTrack(screenTrack);
+      } catch {
+        toast.error("Could not start screen share");
+        for (const t of screenStream.getTracks()) t.stop();
+        return;
+      }
+    }
+
+    // Preserve existing audio tracks (mic) when previewing the screen locally.
+    const existingAudio = localStreamRef.current?.getAudioTracks() ?? [];
+    const previewStream = new MediaStream([screenTrack, ...existingAudio]);
+    // Stop only the *old video* tracks; keep audio alive for the call.
+    if (localStreamRef.current) {
+      for (const t of localStreamRef.current.getVideoTracks()) t.stop();
+    }
+    localStreamRef.current = previewStream;
+    setLocalStream(previewStream);
+    setScreenSharing(true);
+
+    // Auto-revert when the user clicks the browser-provided "Stop sharing".
+    screenTrack.onended = () => {
+      void stopScreenShareRef.current?.();
+    };
+  }, [screenSharing]);
+
+  const stopScreenShare = useCallback(async (): Promise<void> => {
+    const peer = peerRef.current;
+    if (!peer) {
+      setScreenSharing(false);
+      return;
+    }
+    let cameraStream: MediaStream;
+    try {
+      cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+    } catch {
+      toast.error("Could not re-enable camera");
+      // Best-effort: still mark as not sharing so the UI returns to normal.
+      setScreenSharing(false);
+      return;
+    }
+    const cameraVideoTrack = cameraStream.getVideoTracks()[0];
+    if (cameraVideoTrack) {
+      const pc = (peer as unknown as { _pc?: RTCPeerConnection })._pc;
+      const sender = pc?.getSenders().find((s) => s.track?.kind === "video");
+      if (sender) {
+        try {
+          await sender.replaceTrack(cameraVideoTrack);
+        } catch {
+          // ignore — we still want to swap the local preview back
+        }
+      }
+    }
+    // Stop the previous (screen) stream tracks before replacing.
+    if (localStreamRef.current) {
+      for (const t of localStreamRef.current.getTracks()) t.stop();
+    }
+    localStreamRef.current = cameraStream;
+    setLocalStream(cameraStream);
+    // If the user had toggled mute/camera-off prior to sharing, reset those
+    // affordances since this is a fresh stream.
+    setMuted(false);
+    setCameraOff(false);
+    setScreenSharing(false);
+  }, []);
+
+  useEffect(() => {
+    stopScreenShareRef.current = stopScreenShare;
+  }, [stopScreenShare]);
+
   const value = useMemo<CallContextValue>(
     () => ({
       state,
@@ -471,10 +582,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
       remoteStream,
       controls: { muted, cameraOff, toggleMute, toggleCamera },
       error,
+      screenSharing,
       start,
       accept,
       reject,
       end,
+      startScreenShare,
+      stopScreenShare,
     }),
     [
       state,
@@ -487,10 +601,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
       toggleMute,
       toggleCamera,
       error,
+      screenSharing,
       start,
       accept,
       reject,
       end,
+      startScreenShare,
+      stopScreenShare,
     ],
   );
 

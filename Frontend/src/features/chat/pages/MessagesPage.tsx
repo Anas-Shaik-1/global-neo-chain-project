@@ -91,9 +91,9 @@ export function MessagesPage() {
     };
   }, [selectedId, qc]);
 
-  async function handleSend(body: string) {
+  async function handleSend(body: string, file?: File) {
     if (!selectedId) return;
-    await send.mutateAsync({ conversationId: selectedId, body });
+    await send.mutateAsync({ conversationId: selectedId, body, file });
   }
 
   return (

@@ -8,6 +8,16 @@ function requireUser(req: Request) {
   return req.user;
 }
 
+function broadcastMessage(conversationId: string, msg: svc.MessageResponseShape) {
+  // Best-effort socket broadcast. Null in tests / before realtime is attached.
+  try {
+    const ns = getChatNamespace();
+    ns?.to(`conversation:${conversationId}`).emit("message", msg);
+  } catch {
+    // ignore — realtime is best-effort
+  }
+}
+
 export async function getConversations(req: Request, res: Response, next: NextFunction) {
   try {
     const me = requireUser(req);
@@ -63,14 +73,35 @@ export async function postMessage(req: Request, res: Response, next: NextFunctio
     const me = requireUser(req);
     const id = req.params.id as string;
     const body = req.validated as { body: string };
-    const out = await svc.sendMessage(id, me.id, body.body);
-    // Best-effort socket broadcast. Null in tests / before realtime is attached.
-    try {
-      const ns = getChatNamespace();
-      ns?.to(`conversation:${id}`).emit("message", out);
-    } catch {
-      // ignore — realtime is best-effort
-    }
+    const out = await svc.sendMessage(id, me.id, { body: body.body });
+    broadcastMessage(id, out);
+    res.status(201).json(out);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function postMessageWithAttachment(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const me = requireUser(req);
+    const id = req.params.id as string;
+    const file = req.file;
+    if (!file) throw new ValidationError("No file uploaded");
+    const text =
+      typeof req.body?.body === "string" ? req.body.body : "";
+    const out = await svc.sendMessage(id, me.id, {
+      body: text,
+      attachment: {
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        buffer: file.buffer,
+      },
+    });
+    broadcastMessage(id, out);
     res.status(201).json(out);
   } catch (err) {
     next(err);

@@ -5,6 +5,21 @@ import { ValidationError } from "../lib/errors.js";
 const AVATAR_MIME = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"];
 const RESUME_MIME = ["application/pdf"];
 const RECEIPT_MIME = ["application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp"];
+const CHAT_ATTACHMENT_MIME = [
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/webp",
+  "image/gif",
+  "application/pdf",
+  "text/plain",
+  "text/csv",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/zip",
+];
 
 function fileFilter(allowed: string[]) {
   return (_req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
@@ -29,4 +44,10 @@ export const uploadReceipt = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
   fileFilter: fileFilter(RECEIPT_MIME),
+}).single("file");
+
+export const uploadChatAttachment = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  fileFilter: fileFilter(CHAT_ATTACHMENT_MIME),
 }).single("file");

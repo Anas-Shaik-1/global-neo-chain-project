@@ -1,8 +1,14 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import bcrypt from "bcrypt";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { startTestDb, stopTestDb, clearTestDb } from "../../test/setup.js";
 
+let tmpUploads = "";
+
 beforeAll(async () => {
+  tmpUploads = mkdtempSync(join(tmpdir(), "ems-chat-svc-"));
   Object.assign(process.env, {
     PORT: "3000",
     MONGO_URI: "mongodb://localhost/test",
@@ -15,6 +21,8 @@ beforeAll(async () => {
     SEED_ADMIN_PASSWORD: "Password-1!",
     NODE_ENV: "test",
     LOG_LEVEL: "silent",
+    UPLOADS_DIR: tmpUploads,
+    PUBLIC_BASE_URL: "http://test",
   });
   await startTestDb();
   const { User } = await import("../../models/user.model.js");
@@ -26,6 +34,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await stopTestDb();
+  if (tmpUploads) rmSync(tmpUploads, { recursive: true, force: true });
 });
 beforeEach(async () => {
   await clearTestDb();
@@ -116,5 +125,35 @@ describe("chat.service", () => {
     expect(out).toHaveLength(3);
     expect(out[0]!.body).toBe("third");
     expect(out[2]!.body).toBe("first");
+  });
+
+  it("sendMessage with attachment but no body succeeds", async () => {
+    const { openConversation, sendMessage } = await import("./chat.service.js");
+    const a = await makeUser("a@b.com");
+    const b = await makeUser("b@b.com");
+    const convo = await openConversation(a._id.toString(), b._id.toString());
+    const msg = await sendMessage(convo.id, a._id.toString(), {
+      attachment: {
+        originalName: "report.pdf",
+        mimeType: "application/pdf",
+        buffer: Buffer.from("PDFDATA"),
+      },
+    });
+    expect(msg.body).toBe("");
+    expect(typeof msg.attachmentUrl).toBe("string");
+    expect(msg.attachmentUrl).toMatch(/\/files\/chat\/.+\.pdf$/);
+    expect(msg.attachmentName).toBe("report.pdf");
+    expect(msg.attachmentMimeType).toBe("application/pdf");
+    expect(msg.attachmentSize).toBe(Buffer.from("PDFDATA").length);
+  });
+
+  it("sendMessage with neither body nor attachment throws ValidationError", async () => {
+    const { openConversation, sendMessage } = await import("./chat.service.js");
+    const a = await makeUser("a@b.com");
+    const b = await makeUser("b@b.com");
+    const convo = await openConversation(a._id.toString(), b._id.toString());
+    await expect(
+      sendMessage(convo.id, a._id.toString(), { body: "   " }),
+    ).rejects.toMatchObject({ statusCode: 400 });
   });
 });

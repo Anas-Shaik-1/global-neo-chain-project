@@ -11,6 +11,9 @@ import {
   NotFoundError,
   ValidationError,
 } from "../../lib/errors.js";
+import { createFileStorage, type FileInput } from "../../lib/storage.js";
+
+const storage = createFileStorage();
 
 export interface ParticipantSummary {
   id: string;
@@ -33,6 +36,10 @@ export interface MessageResponseShape {
   authorName: string | null;
   body: string;
   createdAt: Date;
+  attachmentUrl: string | null;
+  attachmentName: string | null;
+  attachmentMimeType: string | null;
+  attachmentSize: number | null;
 }
 
 async function buildParticipantsMap(
@@ -102,8 +109,12 @@ export function denormalizeMessage(
     conversationId: m.conversationId.toString(),
     authorId: m.authorId.toString(),
     authorName: authors.get(m.authorId.toString()) ?? null,
-    body: m.body,
+    body: m.body ?? "",
     createdAt: ts.createdAt,
+    attachmentUrl: m.attachmentUrl ?? null,
+    attachmentName: m.attachmentName ?? null,
+    attachmentMimeType: m.attachmentMimeType ?? null,
+    attachmentSize: m.attachmentSize ?? null,
   };
 }
 
@@ -207,21 +218,34 @@ export async function listMessages(
   return docs.map((d) => denormalizeMessage(d, authors));
 }
 
+export interface SendMessageInput {
+  body?: string;
+  attachment?: FileInput;
+}
+
 export async function sendMessage(
   conversationId: string,
   authorId: string,
-  body: string,
+  bodyOrInput: string | SendMessageInput,
 ): Promise<MessageResponseShape> {
+  // Backward-compatible: accept a plain string (legacy callers) or the new
+  // SendMessageInput object. New attachment support always uses the object form.
+  const input: SendMessageInput =
+    typeof bodyOrInput === "string" ? { body: bodyOrInput } : bodyOrInput;
+
   if (!Types.ObjectId.isValid(conversationId)) {
     throw new ValidationError("conversationId must be a valid id");
   }
-  const trimmed = body.trim();
-  if (trimmed.length === 0) {
-    throw new ValidationError("body must not be empty");
+
+  const trimmed = (input.body ?? "").trim();
+  const hasAttachment = !!input.attachment;
+  if (!trimmed && !hasAttachment) {
+    throw new ValidationError("Message must have body or attachment");
   }
   if (trimmed.length > 4000) {
     throw new ValidationError("body must be <= 4000 chars");
   }
+
   const convo = await Conversation.findById(conversationId);
   if (!convo) throw new NotFoundError("Conversation");
   const isParticipant = convo.participantIds.some(
@@ -229,14 +253,32 @@ export async function sendMessage(
   );
   if (!isParticipant) throw new ForbiddenError();
 
+  let saved: { url: string; key: string; contentType: string; size: number } | null =
+    null;
+  if (input.attachment) {
+    saved = await storage.save("chat", authorId, input.attachment);
+  }
+
   const created = await Message.create({
     conversationId: new Types.ObjectId(conversationId),
     authorId: new Types.ObjectId(authorId),
     body: trimmed,
+    attachmentUrl: saved?.url ?? null,
+    attachmentKey: saved?.key ?? null,
+    attachmentName: input.attachment?.originalName ?? null,
+    attachmentMimeType: input.attachment?.mimeType ?? null,
+    attachmentSize: saved?.size ?? null,
   });
 
   convo.lastMessageAt = new Date();
-  convo.lastMessagePreview = trimmed.slice(0, 100);
+  // Preview: text wins over attachment placeholder.
+  const previewText =
+    trimmed.length > 0
+      ? trimmed.slice(0, 100)
+      : input.attachment
+        ? `[attachment] ${input.attachment.originalName}`.slice(0, 100)
+        : "";
+  convo.lastMessagePreview = previewText;
   await convo.save();
 
   const authors = await buildAuthorNames([created.authorId]);

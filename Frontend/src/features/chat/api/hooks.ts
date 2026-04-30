@@ -33,6 +33,10 @@ export interface ChatMessage {
   authorName: string | null;
   body: string;
   createdAt: string;
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
+  attachmentMimeType?: string | null;
+  attachmentSize?: number | null;
 }
 
 export const chatKeys = {
@@ -91,16 +95,28 @@ export function useMessages(
 
 export interface SendMessageInput {
   conversationId: string;
-  body: string;
+  body?: string;
+  file?: File;
 }
 
 export function useSendMessage() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ conversationId, body }: SendMessageInput) => {
+    mutationFn: async ({ conversationId, body, file }: SendMessageInput) => {
+      if (file) {
+        const fd = new FormData();
+        fd.append("file", file);
+        if (body && body.length > 0) fd.append("body", body);
+        const res = await api().post(
+          `/chat/conversations/${conversationId}/messages/attachment`,
+          fd,
+          { headers: { "Content-Type": "multipart/form-data" } },
+        );
+        return res.data as ChatMessage;
+      }
       const res = await api().post(
         `/chat/conversations/${conversationId}/messages`,
-        { body },
+        { body: body ?? "" },
       );
       return res.data as ChatMessage;
     },

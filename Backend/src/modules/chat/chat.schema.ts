@@ -35,6 +35,10 @@ export const MessageResponse = z
     authorName: z.string().nullable(),
     body: z.string(),
     createdAt: z.string().datetime(),
+    attachmentUrl: z.string().nullable().optional(),
+    attachmentName: z.string().nullable().optional(),
+    attachmentMimeType: z.string().nullable().optional(),
+    attachmentSize: z.number().int().nullable().optional(),
   })
   .openapi("ChatMessage");
 
@@ -108,6 +112,33 @@ registry.registerPath({
   request: {
     params: z.object({ id: objectIdString }),
     body: { content: { "application/json": { schema: SendMessageBody } } },
+  },
+  responses: {
+    201: { description: "Created", ...json(MessageResponse) },
+    400: { description: "Validation failed", ...json(ErrorRef) },
+    403: { description: "Forbidden", ...json(ErrorRef) },
+    404: { description: "Not found", ...json(ErrorRef) },
+  },
+});
+
+// Multipart attachment endpoint: a single "file" field plus an optional "body" text field.
+registry.registerPath({
+  method: "post",
+  path: "/chat/conversations/{id}/messages/attachment",
+  tags: ["chat"],
+  security: sec,
+  request: {
+    params: z.object({ id: objectIdString }),
+    body: {
+      content: {
+        "multipart/form-data": {
+          schema: z.object({
+            file: z.string().openapi({ format: "binary" }),
+            body: z.string().max(4000).optional(),
+          }),
+        },
+      },
+    },
   },
   responses: {
     201: { description: "Created", ...json(MessageResponse) },

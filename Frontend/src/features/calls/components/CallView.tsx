@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, PhoneOff, Video, VideoOff } from "lucide-react";
+import {
+  Mic,
+  MicOff,
+  Monitor,
+  MonitorOff,
+  PhoneOff,
+  Video,
+  VideoOff,
+} from "lucide-react";
 import { useCall } from "../CallProvider";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +26,9 @@ export function CallView() {
     controls,
     end,
     error,
+    screenSharing,
+    startScreenShare,
+    stopScreenShare,
   } = useCall();
 
   const localRef = useRef<HTMLVideoElement>(null);
@@ -77,6 +88,22 @@ export function CallView() {
           {status}
         </span>
       </div>
+
+      {screenSharing && (
+        <div className="flex items-center justify-center gap-3 border-b border-white/10 bg-emerald-600/20 px-5 py-2 text-xs text-emerald-100">
+          <Monitor className="h-3.5 w-3.5" />
+          <span>You are sharing your screen</span>
+          <button
+            type="button"
+            onClick={() => {
+              void stopScreenShare();
+            }}
+            className="rounded bg-white/10 px-2 py-0.5 text-[11px] font-medium text-white transition-colors hover:bg-white/20"
+          >
+            Stop
+          </button>
+        </div>
+      )}
 
       <div className="relative flex-1 overflow-hidden">
         {remoteStream ? (
@@ -149,6 +176,30 @@ export function CallView() {
             <VideoOff className="h-5 w-5" />
           ) : (
             <Video className="h-5 w-5" />
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (screenSharing) {
+              void stopScreenShare();
+            } else {
+              void startScreenShare();
+            }
+          }}
+          aria-label={screenSharing ? "Stop sharing screen" : "Share screen"}
+          title={screenSharing ? "Stop sharing screen" : "Share screen"}
+          className={cn(
+            "flex h-12 w-12 items-center justify-center rounded-full transition-colors",
+            screenSharing
+              ? "bg-emerald-500 text-white hover:bg-emerald-500/90"
+              : "bg-white/10 text-white hover:bg-white/20",
+          )}
+        >
+          {screenSharing ? (
+            <MonitorOff className="h-5 w-5" />
+          ) : (
+            <Monitor className="h-5 w-5" />
           )}
         </button>
         <button

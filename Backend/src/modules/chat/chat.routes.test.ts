@@ -1,9 +1,15 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import bcrypt from "bcrypt";
 import request from "supertest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { startTestDb, stopTestDb, clearTestDb } from "../../test/setup.js";
 
+let tmpUploads = "";
+
 beforeAll(async () => {
+  tmpUploads = mkdtempSync(join(tmpdir(), "ems-chat-routes-"));
   Object.assign(process.env, {
     PORT: "3000",
     MONGO_URI: "mongodb://localhost/test",
@@ -16,6 +22,8 @@ beforeAll(async () => {
     SEED_ADMIN_PASSWORD: "Password-1!",
     NODE_ENV: "test",
     LOG_LEVEL: "silent",
+    UPLOADS_DIR: tmpUploads,
+    PUBLIC_BASE_URL: "http://test",
   });
   await startTestDb();
   const { User } = await import("../../models/user.model.js");
@@ -27,6 +35,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await stopTestDb();
+  if (tmpUploads) rmSync(tmpUploads, { recursive: true, force: true });
 });
 beforeEach(async () => {
   await clearTestDb();
@@ -127,6 +136,31 @@ describe("/chat", () => {
     expect(res.body).toHaveLength(2);
     expect(res.body[0].body).toBe("second");
     expect(res.body[1].body).toBe("first");
+  });
+
+  it("POST /chat/conversations/:id/messages/attachment with image succeeds 201, message has attachmentUrl", async () => {
+    const a = await seedAndToken("a@b.com");
+    const b = await seedAndToken("b@b.com");
+    const app = await buildApp();
+    const convo = await request(app)
+      .post("/chat/conversations")
+      .set("Authorization", `Bearer ${a.token}`)
+      .send({ otherUserId: b.id });
+    const res = await request(app)
+      .post(`/chat/conversations/${convo.body.id}/messages/attachment`)
+      .set("Authorization", `Bearer ${a.token}`)
+      .attach("file", Buffer.from("PNGDATA"), {
+        filename: "screenshot.png",
+        contentType: "image/png",
+      })
+      .field("body", "look at this");
+    expect(res.status).toBe(201);
+    expect(res.body.body).toBe("look at this");
+    expect(typeof res.body.attachmentUrl).toBe("string");
+    expect(res.body.attachmentUrl).toMatch(/\/files\/chat\//);
+    expect(res.body.attachmentName).toBe("screenshot.png");
+    expect(res.body.attachmentMimeType).toBe("image/png");
+    expect(res.body.attachmentSize).toBe(Buffer.from("PNGDATA").length);
   });
 
   it("GET /chat/conversations lists my conversations sorted by lastMessageAt desc", async () => {

@@ -1,6 +1,7 @@
 import { Schema, model, type InferSchemaType, type Model, Types } from "mongoose";
 
 // Append-only chat message belonging to a conversation.
+// A message has either a text body, or an attachment, or both.
 const messageSchema = new Schema(
   {
     conversationId: {
@@ -14,7 +15,12 @@ const messageSchema = new Schema(
       ref: "User",
       required: true,
     },
-    body: { type: String, required: true, maxlength: 4000 },
+    body: { type: String, required: false, default: "", maxlength: 4000 },
+    attachmentUrl: { type: String, default: null },
+    attachmentKey: { type: String, default: null, select: false },
+    attachmentName: { type: String, default: null, maxlength: 200 },
+    attachmentMimeType: { type: String, default: null, maxlength: 100 },
+    attachmentSize: { type: Number, default: null },
   },
   { timestamps: { createdAt: true, updatedAt: false } },
 );

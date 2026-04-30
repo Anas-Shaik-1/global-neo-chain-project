@@ -2,6 +2,7 @@ import { Router } from "express";
 import * as ctl from "./chat.controller.js";
 import { validate } from "../../middleware/validate.js";
 import { requireAuth } from "../../middleware/auth.js";
+import { uploadChatAttachment } from "../../middleware/upload.js";
 import { OpenConversationBody, SendMessageBody } from "./chat.schema.js";
 
 export const chatRouter = Router();
@@ -19,4 +20,9 @@ chatRouter.post(
   "/conversations/:id/messages",
   validate(SendMessageBody),
   ctl.postMessage,
+);
+chatRouter.post(
+  "/conversations/:id/messages/attachment",
+  uploadChatAttachment,
+  ctl.postMessageWithAttachment,
 );

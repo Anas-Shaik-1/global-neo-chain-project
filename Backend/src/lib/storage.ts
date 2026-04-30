@@ -2,7 +2,12 @@ import { mkdir, writeFile, unlink } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { v4 as uuid } from "uuid";
 
-export type StorageScope = "avatar" | "resume" | "receipt" | "payslip";
+export type StorageScope =
+  | "avatar"
+  | "resume"
+  | "receipt"
+  | "payslip"
+  | "chat";
 
 export interface SavedFile {
   key: string;
@@ -29,6 +34,14 @@ const MIME_EXTENSIONS: Record<string, string> = {
   "image/webp": "webp",
   "image/gif": "gif",
   "application/pdf": "pdf",
+  "text/plain": "txt",
+  "text/csv": "csv",
+  "application/msword": "doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+    "docx",
+  "application/vnd.ms-excel": "xls",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "application/zip": "zip",
 };
 
 const ALLOWED_BY_SCOPE: Record<StorageScope, string[]> = {
@@ -36,6 +49,21 @@ const ALLOWED_BY_SCOPE: Record<StorageScope, string[]> = {
   resume: ["application/pdf"],
   receipt: ["application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp"],
   payslip: ["application/pdf"],
+  chat: [
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/webp",
+    "image/gif",
+    "application/pdf",
+    "text/plain",
+    "text/csv",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/zip",
+  ],
 };
 
 class LocalStorage implements FileStorage {
