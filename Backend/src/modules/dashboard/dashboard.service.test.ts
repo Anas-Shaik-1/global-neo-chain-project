@@ -141,4 +141,47 @@ describe("dashboard.service", () => {
     expect(out.monthDaysWorked).toBe(0);
     expect(out.myApprovedExpensesThisMonth).toBe(0);
   });
+
+  it("chartSeries(day) returns 14 buckets with a value of 0 when no data", async () => {
+    const { chartSeries } = await import("./dashboard.service.js");
+    const out = await chartSeries({ granularity: "day" });
+    expect(out.attendance).toHaveLength(14);
+    expect(out.expenses).toHaveLength(14);
+    expect(out.payroll).toHaveLength(14);
+    for (const p of out.attendance) expect(p.value).toBe(0);
+    for (const p of out.expenses) expect(p.value).toBe(0);
+    for (const p of out.payroll) expect(p.value).toBe(0);
+    // Buckets must be chronologically ordered (oldest first).
+    const sorted = [...out.attendance].sort((a, b) => a.bucket.localeCompare(b.bucket));
+    expect(out.attendance.map((p) => p.bucket)).toEqual(sorted.map((p) => p.bucket));
+  });
+
+  it("chartSeries(day) sums attendance minutes correctly when there's data", async () => {
+    const { chartSeries } = await import("./dashboard.service.js");
+    const { Attendance } = await import("../../models/attendance.model.js");
+    const me = await makeUser("me@b.com");
+
+    // Build a "today" UTC date string and an entry that lasted 2h 30m.
+    const now = new Date();
+    const y = now.getUTCFullYear();
+    const m = String(now.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(now.getUTCDate()).padStart(2, "0");
+    const dateStr = `${y}-${m}-${d}`;
+    const clockIn = new Date(Date.UTC(y, now.getUTCMonth(), now.getUTCDate(), 9, 0, 0, 0));
+    const clockOut = new Date(clockIn.getTime() + 150 * 60 * 1000); // +2h30m
+    await Attendance.create({
+      userId: me._id,
+      date: dateStr,
+      clockIn,
+      clockOut,
+    });
+
+    const out = await chartSeries({ granularity: "day", userId: me._id.toString(), now });
+    const todayPoint = out.attendance.find((p) => p.bucket === dateStr);
+    expect(todayPoint).toBeDefined();
+    expect(todayPoint!.value).toBe(150);
+    // All other buckets remain zero.
+    const others = out.attendance.filter((p) => p.bucket !== dateStr);
+    for (const p of others) expect(p.value).toBe(0);
+  });
 });

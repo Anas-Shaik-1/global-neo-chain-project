@@ -278,3 +278,39 @@ export function useCreateDepartment() {
     onError: (err) => toast.error(errorMessage(err, "Could not create department")),
   });
 }
+
+export interface UpdateDepartmentInput {
+  name?: string;
+  code?: string;
+  description?: string | null;
+  managerId?: string | null;
+}
+
+export function useUpdateDepartment(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (patch: UpdateDepartmentInput) => {
+      const res = await api().patch(`/departments/${id}`, patch);
+      return res.data as Department;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: departmentKeys.all });
+      toast.success("Department updated");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Failed to update department")),
+  });
+}
+
+export function useDeleteDepartment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await api().delete(`/departments/${id}`);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: departmentKeys.all });
+      toast.success("Department deleted");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Failed to delete department")),
+  });
+}

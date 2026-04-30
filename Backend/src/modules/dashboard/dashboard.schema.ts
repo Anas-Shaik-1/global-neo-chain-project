@@ -118,3 +118,36 @@ registry.registerPath({
     401: { description: "Unauthorized", ...json(ErrorRef) },
   },
 });
+
+const SeriesPoint = z
+  .object({
+    bucket: z.string(),
+    value: z.number().int().nonnegative(),
+  })
+  .openapi("DashboardSeriesPoint");
+
+export const ChartsResponse = z
+  .object({
+    attendance: z.array(SeriesPoint),
+    expenses: z.array(SeriesPoint),
+    payroll: z.array(SeriesPoint),
+  })
+  .openapi("DashboardChartsResponse");
+
+registry.registerPath({
+  method: "get",
+  path: "/dashboard/charts",
+  tags: ["dashboard"],
+  security: sec,
+  request: {
+    query: z.object({
+      granularity: z.enum(["day", "month", "year"]).default("month").optional(),
+      userId: z.string().optional(),
+    }),
+  },
+  responses: {
+    200: { description: "OK", ...json(ChartsResponse) },
+    400: { description: "Bad request", ...json(ErrorRef) },
+    401: { description: "Unauthorized", ...json(ErrorRef) },
+  },
+});

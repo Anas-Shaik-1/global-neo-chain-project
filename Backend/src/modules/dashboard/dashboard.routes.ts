@@ -10,3 +10,4 @@ dashboardRouter.use(requireAuth);
 dashboardRouter.get("/admin", requireRole("ADMIN"), ctl.getAdmin);
 dashboardRouter.get("/hr", requireRole("HR", "ADMIN"), ctl.getHr);
 dashboardRouter.get("/me", ctl.getMe);
+dashboardRouter.get("/charts", ctl.getCharts);

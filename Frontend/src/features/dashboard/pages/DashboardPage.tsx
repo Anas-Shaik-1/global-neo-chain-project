@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Building2,
@@ -5,6 +6,7 @@ import {
   CheckCircle2,
   Clock,
   Download,
+  LineChart as LineChartIcon,
   ListChecks,
   Receipt,
   UserPlus,
@@ -14,18 +16,26 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/common/PageHeader";
 import { PageContainer } from "@/components/common/PageContainer";
 import { MetricCard } from "@/components/common/MetricCard";
 import { EmptyState } from "@/components/common/EmptyState";
+import { RoleGate } from "@/features/auth/RoleGate";
 import { useAppSelector } from "@/app/hooks";
+import { formatHoursMinutes as fmtHM, formatInrCents } from "@/lib/currency";
+import { MetricChart } from "../components/MetricChart";
 import {
   useAdminStats,
+  useChartSeries,
   useEmployeeStats,
   useHRStats,
   type AdminStats,
+  type ChartsResponse,
   type EmployeeStats,
+  type Granularity,
   type HrStats,
+  type SeriesPoint,
 } from "../api/hooks";
 
 const METRIC_GRID = "grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4";
@@ -40,6 +50,8 @@ function formatCents(amount: number, currency = "USD"): string {
 }
 
 function formatHoursMinutes(totalMinutes: number): string {
+  // Local "always show both segments" formatter — distinct from the compact
+  // shared util `fmtHM` used by the trend charts (which drops zero parts).
   const h = Math.floor(totalMinutes / 60);
   const m = totalMinutes % 60;
   return `${h}h ${m}m`;
@@ -431,6 +443,101 @@ function AdminSection({ data }: { data: AdminStats | undefined }) {
   );
 }
 
+function sumSeries(points: SeriesPoint[] | undefined): number {
+  if (!points) return 0;
+  return points.reduce((acc, p) => acc + p.value, 0);
+}
+
+function isEmptySeries(points: SeriesPoint[] | undefined): boolean {
+  if (!points || points.length === 0) return true;
+  return points.every((p) => p.value === 0);
+}
+
+interface TrendCardProps {
+  title: string;
+  data: SeriesPoint[] | undefined;
+  total: string;
+  color: string;
+  formatValue: (v: number) => string;
+  loading: boolean;
+}
+
+function TrendCard({ title, data, total, color, formatValue, loading }: TrendCardProps) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base font-medium text-muted-foreground">{title}</CardTitle>
+        <div className="font-display text-2xl font-semibold tracking-tight font-mono">
+          {loading ? <Skeleton className="h-8 w-32" /> : total}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <Skeleton className="h-[200px] w-full" />
+        ) : isEmptySeries(data) ? (
+          <div className="flex h-[200px] items-center justify-center rounded-md border border-dashed border-border text-sm text-muted-foreground">
+            No data yet
+          </div>
+        ) : (
+          <MetricChart data={data ?? []} color={color} formatValue={formatValue} />
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function TrendsSection() {
+  const [granularity, setGranularity] = useState<Granularity>("month");
+  const charts = useChartSeries(granularity);
+  const data: ChartsResponse | undefined = charts.data;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <LineChartIcon className="h-5 w-5 text-muted-foreground" />
+          <h2 className="font-display text-xl font-semibold tracking-tight">Trends</h2>
+        </div>
+        <Tabs value={granularity} onValueChange={(v) => setGranularity(v as Granularity)}>
+          <TabsList>
+            <TabsTrigger value="day">Daily</TabsTrigger>
+            <TabsTrigger value="month">Monthly</TabsTrigger>
+            <TabsTrigger value="year">Yearly</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <TrendCard
+          title="Working hours"
+          data={data?.attendance}
+          total={fmtHM(sumSeries(data?.attendance))}
+          color="hsl(195 90% 55%)"
+          formatValue={(v) => fmtHM(v)}
+          loading={charts.isLoading}
+        />
+        <TrendCard
+          title="Approved expenses"
+          data={data?.expenses}
+          total={formatInrCents(sumSeries(data?.expenses))}
+          color="hsl(38 92% 55%)"
+          formatValue={(v) => formatInrCents(v)}
+          loading={charts.isLoading}
+        />
+        <RoleGate roles={["HR", "ADMIN"]}>
+          <TrendCard
+            title="Payroll"
+            data={data?.payroll}
+            total={formatInrCents(sumSeries(data?.payroll))}
+            color="hsl(160 70% 45%)"
+            formatValue={(v) => formatInrCents(v)}
+            loading={charts.isLoading}
+          />
+        </RoleGate>
+      </div>
+    </div>
+  );
+}
+
 export function DashboardPage() {
   const role = useAppSelector((s) => s.auth.user?.role);
   const employee = useEmployeeStats();
@@ -445,6 +552,8 @@ export function DashboardPage() {
           description="Company-wide metrics."
         />
         <AdminSection data={admin.data} />
+
+        <TrendsSection />
 
         <div className="space-y-2 pt-4">
           <h2 className="font-display text-xl font-semibold tracking-tight">
@@ -473,6 +582,8 @@ export function DashboardPage() {
         <PageHeader title="HR overview" description="Pulse of the team." />
         <HRSection data={hr.data} />
 
+        <TrendsSection />
+
         <div className="space-y-2 pt-4">
           <h2 className="font-display text-xl font-semibold tracking-tight">
             My day
@@ -487,12 +598,14 @@ export function DashboardPage() {
   }
 
   return (
-    <PageContainer width="wide" className="space-y-6">
+    <PageContainer width="wide" className="space-y-10">
       <PageHeader
         title="Today"
         description="A snapshot of your day at Global NeoChain."
       />
       <EmployeeSection data={employee.data} />
+
+      <TrendsSection />
     </PageContainer>
   );
 }

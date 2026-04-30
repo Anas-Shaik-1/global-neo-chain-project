@@ -9,7 +9,22 @@ export const dashboardKeys = {
   admin: ["dashboard", "admin"] as const,
   hr: ["dashboard", "hr"] as const,
   me: ["dashboard", "me"] as const,
+  charts: (granularity: Granularity, userId: string | undefined) =>
+    ["dashboard", "charts", granularity, userId ?? "self"] as const,
 };
+
+export type Granularity = "day" | "month" | "year";
+
+export interface SeriesPoint {
+  bucket: string;
+  value: number;
+}
+
+export interface ChartsResponse {
+  attendance: SeriesPoint[];
+  expenses: SeriesPoint[];
+  payroll: SeriesPoint[];
+}
 
 export interface RecentJoiner {
   id: string;
@@ -108,6 +123,20 @@ export function useAdminStats() {
     queryFn: async () => {
       const res = await api().get("/dashboard/admin");
       return res.data as AdminStats;
+    },
+  });
+}
+
+export function useChartSeries(granularity: Granularity, userId?: string) {
+  const isAuthed = useAppSelector((s) => !!s.auth.user);
+  return useQuery({
+    queryKey: dashboardKeys.charts(granularity, userId),
+    enabled: isAuthed,
+    queryFn: async () => {
+      const params: Record<string, string> = { granularity };
+      if (userId) params.userId = userId;
+      const res = await api().get("/dashboard/charts", { params });
+      return res.data as ChartsResponse;
     },
   });
 }

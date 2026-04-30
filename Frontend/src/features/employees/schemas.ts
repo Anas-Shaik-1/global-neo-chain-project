@@ -55,3 +55,19 @@ export const CreateDepartmentSchema = z.object({
   code: departmentCodeSchema,
 });
 export type CreateDepartmentValues = z.infer<typeof CreateDepartmentSchema>;
+
+export const UpdateDepartmentSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "Name is required")
+    .max(100, "Name must be 100 characters or fewer"),
+  code: departmentCodeSchema,
+  description: z
+    .string()
+    .max(500, "Description must be 500 characters or fewer")
+    .or(z.literal(""))
+    .optional(),
+  managerId: z.string().or(z.literal("")).optional(),
+});
+export type UpdateDepartmentValues = z.infer<typeof UpdateDepartmentSchema>;

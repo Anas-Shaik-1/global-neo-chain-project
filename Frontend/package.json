@@ -38,6 +38,7 @@
     "react-hook-form": "^7.74.0",
     "react-redux": "^9.2.0",
     "react-router-dom": "^7.1.1",
+    "recharts": "^3.8.1",
     "simple-peer": "^9.11.1",
     "socket.io-client": "^4.8.3",
     "sonner": "^1.7.1",
