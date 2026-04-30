@@ -61,6 +61,14 @@ function filterBySearch(items: Expense[], term: string): Expense[] {
   );
 }
 
+function formatInr(cents: number): string {
+  const rupees = cents / 100;
+  return `₹${rupees.toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 function MyExpensesTab() {
   const [status, setStatus] = useState<ExpenseStatus | "ALL">("ALL");
   const [search, setSearch] = useState("");
@@ -71,6 +79,7 @@ function MyExpensesTab() {
   const q = useMyExpenses(params);
   const items = q.data?.items ?? [];
   const filtered = useMemo(() => filterBySearch(items, search), [items, search]);
+  const totalInrCents = q.data?.summary?.totalInrCents ?? 0;
   return (
     <Card>
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -87,14 +96,24 @@ function MyExpensesTab() {
         {q.isLoading || !q.data ? (
           <Skeleton className="h-32 w-full" />
         ) : (
-          <ExpensesTable
-            expenses={filtered}
-            emptyState={
-              search
-                ? "No expenses match your search."
-                : "You haven't submitted any expenses yet."
-            }
-          />
+          <>
+            <ExpensesTable
+              expenses={filtered}
+              showActions={false}
+              emptyState={
+                search
+                  ? "No expenses match your search."
+                  : "You haven't submitted any expenses yet."
+              }
+            />
+            {items.length > 0 && (
+              <div className="flex justify-end border-t border-border/50 pt-3 text-sm text-muted-foreground">
+                <span>
+                  Total (INR): <span className="font-mono font-medium text-foreground tabular-nums">{formatInr(totalInrCents)}</span>
+                </span>
+              </div>
+            )}
+          </>
         )}
       </CardContent>
     </Card>
@@ -117,6 +136,7 @@ function ApprovalQueueTab({
   const q = useAllExpenses(params);
   const items = q.data?.items ?? [];
   const filtered = useMemo(() => filterBySearch(items, search), [items, search]);
+  const totalInrCents = q.data?.summary?.totalInrCents ?? 0;
   return (
     <Card>
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -133,13 +153,23 @@ function ApprovalQueueTab({
         {q.isLoading || !q.data ? (
           <Skeleton className="h-32 w-full" />
         ) : (
-          <ExpensesTable
-            expenses={filtered}
-            showOwner
-            onApprove={onApprove}
-            onReject={onReject}
-            emptyState="No expenses match this filter."
-          />
+          <>
+            <ExpensesTable
+              expenses={filtered}
+              showOwner
+              showActions
+              onApprove={onApprove}
+              onReject={onReject}
+              emptyState="No expenses match this filter."
+            />
+            {items.length > 0 && (
+              <div className="flex justify-end border-t border-border/50 pt-3 text-sm text-muted-foreground">
+                <span>
+                  Total (INR): <span className="font-mono font-medium text-foreground tabular-nums">{formatInr(totalInrCents)}</span>
+                </span>
+              </div>
+            )}
+          </>
         )}
       </CardContent>
     </Card>
@@ -148,7 +178,9 @@ function ApprovalQueueTab({
 
 export function ExpensesPage() {
   const role = useAppSelector((s) => s.auth.user?.role);
-  const isElevated = role === "HR" || role === "ADMIN";
+  // Approvals are admin-only. HR can no longer decide expenses; the approval
+  // queue tab is hidden for non-admins (the API would also 403 the request).
+  const isAdmin = role === "ADMIN";
 
   const [showSubmit, setShowSubmit] = useState(false);
   const [decideTarget, setDecideTarget] = useState<Expense | null>(null);
@@ -168,11 +200,15 @@ export function ExpensesPage() {
     <PageContainer width="wide" className="space-y-6">
       <PageHeader
         title="Expenses"
-        description="Submit reimbursements and approve team requests."
+        description={
+          isAdmin
+            ? "Submit reimbursements and approve team requests."
+            : "Submit reimbursements. Only Admins can approve expenses."
+        }
         actions={<Button onClick={() => setShowSubmit(true)}>+ Submit expense</Button>}
       />
 
-      {isElevated ? (
+      {isAdmin ? (
         <Tabs defaultValue="mine" className="space-y-4">
           <TabsList>
             <TabsTrigger value="mine">My expenses</TabsTrigger>

@@ -14,6 +14,7 @@ import {
 } from "../../lib/errors.js";
 import { createFileStorage } from "../../lib/storage.js";
 import { generatePayslipPdf } from "../../lib/pdf.js";
+import { logger } from "../../lib/logger.js";
 
 const storage = createFileStorage();
 
@@ -179,6 +180,15 @@ export interface CreatePayslipInput {
   notes?: string;
 }
 
+async function notifyPayslipAvailable(userId: string, month: string): Promise<void> {
+  const { notify } = await import("../notifications/notifications.service.js");
+  await notify(userId, {
+    kind: "PAYSLIP_AVAILABLE",
+    title: `Payslip available for ${month}`,
+    link: "/payroll",
+  });
+}
+
 function computeNet(gross: number, breakdown: BreakdownItem[]): number {
   let net = gross;
   for (const item of breakdown) {
@@ -208,13 +218,16 @@ export async function createPayslip(
     const created = await Payslip.create({
       userId: new Types.ObjectId(input.userId),
       month: input.month,
-      currency: input.currency ?? "USD",
+      currency: input.currency ?? "INR",
       gross: input.gross,
       breakdown,
       netAmount,
       notes: input.notes ?? null,
       generatedById: new Types.ObjectId(generatedById),
       pdfUrl: null,
+    });
+    void notifyPayslipAvailable(input.userId, input.month).catch((err) => {
+      logger.warn({ err }, "payroll.createPayslip notify failed");
     });
     return denormalizeOne(created);
   } catch (err) {

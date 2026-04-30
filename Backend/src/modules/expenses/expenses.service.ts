@@ -14,6 +14,8 @@ import {
   ValidationError,
 } from "../../lib/errors.js";
 import { createFileStorage, type FileInput } from "../../lib/storage.js";
+import { toInrCents, formatCurrency } from "../../lib/currency.js";
+import { logger } from "../../lib/logger.js";
 
 const storage = createFileStorage();
 
@@ -23,6 +25,7 @@ export interface ExpenseResponseShape {
   userName: string | null;
   amount: number;
   currency: string;
+  amountInr: number;
   category: ExpenseCategory;
   description: string;
   incurredOn: Date;
@@ -69,6 +72,7 @@ export function denormalizeExpense(
     userName: userNames.get(e.userId.toString()) ?? null,
     amount: e.amount,
     currency: e.currency,
+    amountInr: toInrCents(e.amount, e.currency),
     category: e.category as ExpenseCategory,
     description: e.description,
     incurredOn: e.incurredOn,
@@ -110,11 +114,21 @@ export interface ListAllInput extends ListMyInput {
   userId?: string;
 }
 
+export interface ExpensesSummary {
+  totalInrCents: number;
+}
+
 export interface PagedExpenses {
   items: ExpenseResponseShape[];
   total: number;
   page: number;
   limit: number;
+  summary: ExpensesSummary;
+}
+
+function summarize(items: ExpenseResponseShape[]): ExpensesSummary {
+  const totalInrCents = items.reduce((acc, e) => acc + e.amountInr, 0);
+  return { totalInrCents };
 }
 
 export async function listMyExpenses(
@@ -133,7 +147,7 @@ export async function listMyExpenses(
     Expense.countDocuments(filter),
   ]);
   const items = await denormalizeMany(docs);
-  return { items, total, page, limit };
+  return { items, total, page, limit, summary: summarize(items) };
 }
 
 export async function listAll(input: ListAllInput): Promise<PagedExpenses> {
@@ -150,7 +164,7 @@ export async function listAll(input: ListAllInput): Promise<PagedExpenses> {
     Expense.countDocuments(filter),
   ]);
   const items = await denormalizeMany(docs);
-  return { items, total, page, limit };
+  return { items, total, page, limit, summary: summarize(items) };
 }
 
 export async function getExpense(
@@ -192,7 +206,7 @@ export async function createExpense(
   const created = await Expense.create({
     userId: new Types.ObjectId(userId),
     amount: input.amount,
-    currency: input.currency ?? "USD",
+    currency: input.currency ?? "INR",
     category: input.category,
     description: input.description,
     incurredOn: input.incurredOn,
@@ -202,7 +216,30 @@ export async function createExpense(
     decisionNote: null,
     decidedAt: null,
   });
-  return denormalizeOne(created);
+  const result = await denormalizeOne(created);
+  // Fire-and-forget admin notifications. Failures here must never block the
+  // user-visible "expense submitted" success path.
+  void notifyExpenseSubmitted(result).catch((err) => {
+    logger.warn({ err }, "expenses.createExpense notify failed");
+  });
+  return result;
+}
+
+async function notifyExpenseSubmitted(expense: ExpenseResponseShape): Promise<void> {
+  const { notify } = await import("../notifications/notifications.service.js");
+  const admins = await User.find({ role: "ADMIN" }).select("_id").lean();
+  const submitterName = expense.userName ?? "An employee";
+  const body = `${formatCurrency(expense.amount, expense.currency)} for ${expense.category}`;
+  await Promise.all(
+    admins.map((a) =>
+      notify(a._id.toString(), {
+        kind: "EXPENSE_SUBMITTED",
+        title: `${submitterName} submitted an expense`,
+        body,
+        link: "/expenses",
+      }),
+    ),
+  );
 }
 
 export type ExpenseDecision = "APPROVED" | "REJECTED";
@@ -223,7 +260,26 @@ export async function decideExpense(
   doc.decisionNote = note ?? null;
   doc.decidedAt = new Date();
   await doc.save();
-  return denormalizeOne(doc);
+  const result = await denormalizeOne(doc);
+  void notifyExpenseDecided(result, decision, note).catch((err) => {
+    logger.warn({ err }, "expenses.decideExpense notify failed");
+  });
+  return result;
+}
+
+async function notifyExpenseDecided(
+  expense: ExpenseResponseShape,
+  decision: ExpenseDecision,
+  note?: string,
+): Promise<void> {
+  const { notify } = await import("../notifications/notifications.service.js");
+  const verb = decision === "APPROVED" ? "approved" : "rejected";
+  await notify(expense.userId, {
+    kind: decision === "APPROVED" ? "EXPENSE_APPROVED" : "EXPENSE_REJECTED",
+    title: `Expense ${verb}`,
+    body: note?.trim() ? note : `Your ${expense.category} expense was ${verb}`,
+    link: "/expenses",
+  });
 }
 
 export async function setReceipt(

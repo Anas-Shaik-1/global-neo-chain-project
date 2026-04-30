@@ -2,6 +2,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { AlertTriangle } from "lucide-react";
 import { useAppSelector } from "@/app/hooks";
 import { Button } from "@/components/ui/button";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { useResendVerification } from "@/features/auth/api/hooks";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
@@ -21,6 +22,7 @@ export function AppLayout() {
   const showVerifyBanner = !!user && user.isVerified === false;
 
   return (
+    <TooltipProvider delayDuration={250}>
     <div className="flex h-screen w-screen bg-background text-foreground">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
@@ -53,5 +55,6 @@ export function AppLayout() {
         </main>
       </div>
     </div>
+    </TooltipProvider>
   );
 }

@@ -49,7 +49,7 @@ function todayDateString(): string {
 
 interface FormShape {
   amount: string;
-  currency: string;
+  currency: "USD" | "INR";
   category: SubmitExpenseValues["category"];
   description: string;
   incurredOn: string;
@@ -67,7 +67,7 @@ export function SubmitExpenseDialog({ open, onOpenChange, onSubmitted }: Props) 
     resolver: zodResolver(SubmitExpenseSchema) as never,
     defaultValues: {
       amount: "",
-      currency: "USD",
+      currency: "INR",
       category: "MEALS",
       description: "",
       incurredOn: todayDateString(),
@@ -78,7 +78,7 @@ export function SubmitExpenseDialog({ open, onOpenChange, onSubmitted }: Props) 
     if (!open) {
       form.reset({
         amount: "",
-        currency: "USD",
+        currency: "INR",
         category: "MEALS",
         description: "",
         incurredOn: todayDateString(),
@@ -148,13 +148,17 @@ export function SubmitExpenseDialog({ open, onOpenChange, onSubmitted }: Props) 
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Currency</FormLabel>
-                    <FormControl>
-                      <Input
-                        maxLength={3}
-                        {...field}
-                        onChange={(e) => field.onChange(e.target.value.toUpperCase())}
-                      />
-                    </FormControl>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="INR">₹ INR</SelectItem>
+                        <SelectItem value="USD">$ USD</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}

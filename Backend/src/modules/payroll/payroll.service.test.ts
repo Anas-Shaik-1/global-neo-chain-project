@@ -58,7 +58,8 @@ describe("payroll.service", () => {
     );
     expect(out.gross).toBe(10000);
     expect(out.netAmount).toBe(9000);
-    expect(out.currency).toBe("USD");
+    // Default currency is INR after the currency enum tightening.
+    expect(out.currency).toBe("INR");
     expect(out.userId).toBe(employee._id.toString());
     expect(out.userName).toBe("e@b.com");
     expect(out.generatedById).toBe(hr._id.toString());

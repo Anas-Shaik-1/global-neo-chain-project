@@ -9,7 +9,10 @@ import { ThemeProvider } from "./theme";
 function buildStore(theme: "dark" | "light") {
   return configureStore({
     reducer: { ui: uiSlice.reducer, auth: authSlice.reducer },
-    preloadedState: { ui: { theme, sidebarOpen: true }, auth: { accessToken: null, user: null } },
+    preloadedState: {
+      ui: { theme, sidebarOpen: true, sidebarCollapsed: false },
+      auth: { accessToken: null, user: null },
+    },
   });
 }
 

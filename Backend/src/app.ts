@@ -21,6 +21,7 @@ import { payrollRouter } from "./modules/payroll/payroll.routes.js";
 import { chatRouter } from "./modules/chat/chat.routes.js";
 import { callsRouter } from "./modules/calls/calls.routes.js";
 import { dashboardRouter } from "./modules/dashboard/dashboard.routes.js";
+import { notificationsRouter } from "./modules/notifications/notifications.routes.js";
 import "./modules/auth/auth.schema.js";
 import "./modules/authExtensions/authExtensions.schema.js";
 import "./modules/employees/employees.schema.js";
@@ -32,6 +33,7 @@ import "./modules/payroll/payroll.schema.js";
 import "./modules/chat/chat.schema.js";
 import "./modules/calls/calls.schema.js";
 import "./modules/dashboard/dashboard.schema.js";
+import "./modules/notifications/notifications.schema.js";
 import { buildOpenApiDocument } from "./openapi/spec.js";
 
 export function createApp() {
@@ -68,6 +70,7 @@ export function createApp() {
   app.use("/chat", chatRouter);
   app.use("/calls", callsRouter);
   app.use("/dashboard", dashboardRouter);
+  app.use("/notifications", notificationsRouter);
 
   app.use(errorHandler);
   return app;

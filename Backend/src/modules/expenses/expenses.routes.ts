@@ -18,7 +18,7 @@ expensesRouter.post("/:id/receipt", uploadReceipt, ctl.postReceipt);
 expensesRouter.delete("/:id/receipt", ctl.deleteReceipt);
 expensesRouter.post(
   "/:id/decide",
-  requireRole("HR", "ADMIN"),
+  requireRole("ADMIN"),
   validate(DecideExpenseBody),
   ctl.postDecide,
 );

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { registry } from "../../openapi/registry.js";
-import { EXPENSE_CATEGORIES, EXPENSE_STATUSES } from "../../models/expense.model.js";
+import { CURRENCIES, EXPENSE_CATEGORIES, EXPENSE_STATUSES } from "../../models/expense.model.js";
 
 const objectIdString = z
   .string()
@@ -12,7 +12,8 @@ export const ExpenseResponse = z
     userId: z.string(),
     userName: z.string().nullable(),
     amount: z.number().nonnegative(),
-    currency: z.string().length(3),
+    currency: z.enum(CURRENCIES),
+    amountInr: z.number().int(),
     category: z.enum(EXPENSE_CATEGORIES),
     description: z.string(),
     incurredOn: z.string().datetime(),
@@ -33,17 +34,14 @@ export const ListExpensesResponse = z
     total: z.number().int().nonnegative(),
     page: z.number().int().positive(),
     limit: z.number().int().positive(),
+    summary: z.object({ totalInrCents: z.number().int().nonnegative() }),
   })
   .openapi("ListExpensesResponse");
 
 export const CreateExpenseBody = z
   .object({
     amount: z.number().nonnegative(),
-    currency: z
-      .string()
-      .length(3)
-      .transform((s) => s.toUpperCase())
-      .optional(),
+    currency: z.enum(CURRENCIES).optional(),
     category: z.enum(EXPENSE_CATEGORIES),
     description: z.string().min(1).max(500),
     incurredOn: z.coerce.date(),

@@ -14,6 +14,25 @@ import {
 } from "../../models/taskActivity.model.js";
 import { User } from "../../models/user.model.js";
 import { ConflictError, NotFoundError } from "../../lib/errors.js";
+import { logger } from "../../lib/logger.js";
+
+async function notifyTaskAssigned(args: {
+  assigneeId: string;
+  creatorId: string;
+  taskTitle: string;
+  projectId: string;
+  projectName: string;
+}): Promise<void> {
+  // Don't notify a user about a task they assigned to themselves.
+  if (args.assigneeId === args.creatorId) return;
+  const { notify } = await import("../notifications/notifications.service.js");
+  await notify(args.assigneeId, {
+    kind: "TASK_ASSIGNED",
+    title: `New task: ${args.taskTitle}`,
+    body: `In ${args.projectName}`,
+    link: `/tasks?project=${args.projectId}`,
+  });
+}
 
 export interface ProjectResponseShape {
   id: string;
@@ -310,6 +329,15 @@ export async function createTask(input: CreateTaskInput, createdById: string): P
     [project._id.toString(), { key: project.key, name: project.name }],
   ]);
   const subtaskCounts = new Map<string, number>();
+  if (created.assigneeId) {
+    void notifyTaskAssigned({
+      assigneeId: created.assigneeId.toString(),
+      creatorId: createdById,
+      taskTitle: created.title,
+      projectId: project._id.toString(),
+      projectName: project.name,
+    }).catch((err) => logger.warn({ err }, "tasks.createTask notify failed"));
+  }
   return denormalizeTask(created, { userNames, projectInfo, subtaskCounts });
 }
 
@@ -395,6 +423,17 @@ export async function updateTask(
           fromValue: oldId ? names.get(oldId) ?? "unassigned" : "unassigned",
           toValue: newId ? names.get(newId) ?? "unassigned" : "unassigned",
         });
+        // Notify the new assignee (if any). Skip if they're the actor.
+        if (newId) {
+          const proj = await Project.findById(t.projectId).select("name").lean();
+          void notifyTaskAssigned({
+            assigneeId: newId,
+            creatorId: actorId,
+            taskTitle: t.title,
+            projectId: t.projectId.toString(),
+            projectName: proj?.name ?? "a project",
+          }).catch((err) => logger.warn({ err }, "tasks.updateTask notify failed"));
+        }
       }
     }
     if (patch.dueDate !== undefined) {

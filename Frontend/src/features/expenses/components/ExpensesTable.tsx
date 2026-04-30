@@ -15,10 +15,21 @@ export function StatusBadge({ status }: { status: ExpenseStatus }) {
 
 function formatAmount(amount: number, currency: string): string {
   const major = amount / 100;
-  return `${major.toLocaleString(undefined, {
+  const symbol = currency === "INR" ? "₹" : currency === "USD" ? "$" : "";
+  const locale = currency === "INR" ? "en-IN" : "en-US";
+  const num = major.toLocaleString(locale, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  })} ${currency}`;
+  });
+  return symbol ? `${symbol}${num}` : `${num} ${currency}`;
+}
+
+function formatInr(amountInr: number): string {
+  const rupees = amountInr / 100;
+  return `₹${rupees.toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function formatDate(iso: string): string {
@@ -30,6 +41,7 @@ function formatDate(iso: string): string {
 interface Props {
   expenses: Expense[];
   showOwner?: boolean;
+  showActions?: boolean;
   onView?: (expense: Expense) => void;
   onApprove?: (expense: Expense) => void;
   onReject?: (expense: Expense) => void;
@@ -39,6 +51,7 @@ interface Props {
 export function ExpensesTable({
   expenses,
   showOwner = false,
+  showActions = false,
   onView,
   onApprove,
   onReject,
@@ -65,7 +78,7 @@ export function ExpensesTable({
             <th className="py-2 pr-3">Status</th>
             <th className="py-2 pr-3">Decision by</th>
             <th className="py-2 pr-3">Receipt</th>
-            <th className="py-2 pr-3 text-right">Actions</th>
+            {showActions && <th className="py-2 pr-3 text-right">Actions</th>}
           </tr>
         </thead>
         <tbody>
@@ -79,8 +92,11 @@ export function ExpensesTable({
               <td className="py-2 pr-3 max-w-[28ch] truncate" title={e.description}>
                 {e.description}
               </td>
-              <td className="py-2 pr-3 text-right whitespace-nowrap">
-                {formatAmount(e.amount, e.currency)}
+              <td className="py-2 pr-3 text-right whitespace-nowrap tabular-nums">
+                <div className="font-medium">{formatAmount(e.amount, e.currency)}</div>
+                {e.currency !== "INR" && (
+                  <div className="text-xs text-muted-foreground">{formatInr(e.amountInr)}</div>
+                )}
               </td>
               <td className="py-2 pr-3">
                 <StatusBadge status={e.status} />
@@ -102,29 +118,31 @@ export function ExpensesTable({
                   <span className="text-muted-foreground">—</span>
                 )}
               </td>
-              <td className="py-2 pr-3 text-right">
-                <div className="flex flex-wrap justify-end gap-2">
-                  {onView && (
-                    <Button size="sm" variant="ghost" onClick={() => onView(e)}>
-                      View
-                    </Button>
-                  )}
-                  {onApprove && e.status === "PENDING" && (
-                    <Button size="sm" variant="outline" onClick={() => onApprove(e)}>
-                      Approve
-                    </Button>
-                  )}
-                  {onReject && e.status === "PENDING" && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => onReject(e)}
-                    >
-                      Reject
-                    </Button>
-                  )}
-                </div>
-              </td>
+              {showActions && (
+                <td className="py-2 pr-3 text-right">
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {onView && (
+                      <Button size="sm" variant="ghost" onClick={() => onView(e)}>
+                        View
+                      </Button>
+                    )}
+                    {onApprove && e.status === "PENDING" && (
+                      <Button size="sm" variant="outline" onClick={() => onApprove(e)}>
+                        Approve
+                      </Button>
+                    )}
+                    {onReject && e.status === "PENDING" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onReject(e)}
+                      >
+                        Reject
+                      </Button>
+                    )}
+                  </div>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

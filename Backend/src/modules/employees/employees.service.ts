@@ -233,9 +233,20 @@ export async function setProjectManager(userId: string, value: boolean): Promise
   if (u.role !== "EMPLOYEE") {
     throw new ForbiddenError("Only employees can be promoted to Project Manager");
   }
+  const wasManager = u.isProjectManager === true;
   u.isProjectManager = value;
   await u.save();
   const deptName = await loadDepartmentName(u.departmentId);
+  if (value && !wasManager) {
+    void (async () => {
+      const { notify } = await import("../notifications/notifications.service.js");
+      await notify(u._id.toString(), {
+        kind: "PROMOTED_TO_PM",
+        title: "You're now a Project Manager",
+        link: "/profile",
+      });
+    })().catch((err) => logger.warn({ err }, "employees.setProjectManager notify failed"));
+  }
   return toFullProfile(u, deptName);
 }
 

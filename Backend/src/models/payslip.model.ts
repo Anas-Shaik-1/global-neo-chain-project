@@ -1,4 +1,5 @@
 import { Schema, model, type InferSchemaType, type Model, Types } from "mongoose";
+import { CURRENCIES } from "./expense.model.js";
 
 // Amounts are stored as integers in the smallest currency unit (cents).
 // 100 = 1.00. For MVP this is a plain Number; the convention keeps wire
@@ -31,10 +32,9 @@ const payslipSchema = new Schema(
     currency: {
       type: String,
       required: true,
-      default: "USD",
+      enum: CURRENCIES,
+      default: "INR",
       uppercase: true,
-      minlength: 3,
-      maxlength: 3,
     },
     gross: { type: Number, required: true, min: 0 },
     breakdown: { type: [breakdownItemSchema], default: [] },

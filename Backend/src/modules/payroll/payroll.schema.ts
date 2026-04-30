@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { registry } from "../../openapi/registry.js";
 import { BREAKDOWN_KINDS } from "../../models/payslip.model.js";
+import { CURRENCIES } from "../../models/expense.model.js";
 
 const objectIdString = z
   .string()
@@ -32,7 +33,7 @@ export const PayslipResponse = z
     userId: z.string(),
     userName: z.string().nullable(),
     month: z.string(),
-    currency: z.string().length(3),
+    currency: z.enum(CURRENCIES),
     gross: z.number().nonnegative(),
     breakdown: z.array(BreakdownItemResponse),
     netAmount: z.number().nonnegative(),
@@ -58,11 +59,7 @@ export const CreatePayslipBody = z
   .object({
     userId: objectIdString,
     month: monthString,
-    currency: z
-      .string()
-      .length(3)
-      .transform((s) => s.toUpperCase())
-      .optional(),
+    currency: z.enum(CURRENCIES).optional(),
     gross: z.number().nonnegative(),
     breakdown: z.array(BreakdownItemBody).optional(),
     notes: z.string().max(1000).optional(),

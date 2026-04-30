@@ -51,32 +51,50 @@ describe("expenses.service", () => {
     });
     expect(out.status).toBe("PENDING");
     expect(out.amount).toBe(1500);
-    expect(out.currency).toBe("USD");
+    // Default currency is INR after the currency enum tightening.
+    expect(out.currency).toBe("INR");
+    expect(out.amountInr).toBe(1500);
     expect(out.userId).toBe(u._id.toString());
     expect(out.userName).toBe("alice@b.com");
     expect(out.decisionById).toBeNull();
     expect(out.decidedAt).toBeNull();
   });
 
-  it("decideExpense pending->approved sets status, decisionById and decidedAt", async () => {
+  it("denormalizeExpense converts USD to INR using the MVP rate (1 USD = 83 INR)", async () => {
+    const { createExpense } = await import("./expenses.service.js");
+    const u = await makeUser("usd@b.com");
+    const out = await createExpense(u._id.toString(), {
+      amount: 1000,
+      currency: "USD",
+      category: "TRAVEL",
+      description: "Airport cab",
+      incurredOn: new Date("2026-04-20"),
+    });
+    expect(out.currency).toBe("USD");
+    // 1000 cents @ 83 = 83000 paise.
+    expect(out.amountInr).toBe(83000);
+  });
+
+  it("decideExpense pending->approved by an admin sets status, decisionById and decidedAt", async () => {
     const { createExpense, decideExpense } = await import("./expenses.service.js");
     const employee = await makeUser("e@b.com");
-    const hr = await makeUser("hr@b.com", "HR");
+    const admin = await makeUser("admin@b.com", "ADMIN");
     const created = await createExpense(employee._id.toString(), {
       amount: 200,
       category: "TRAVEL",
       description: "Cab fare",
       incurredOn: new Date("2026-04-20"),
     });
+    // Service-layer test — role enforcement lives in the route.
     const decided = await decideExpense(
       created.id,
-      hr._id.toString(),
+      admin._id.toString(),
       "APPROVED",
       "ok",
     );
     expect(decided.status).toBe("APPROVED");
-    expect(decided.decisionById).toBe(hr._id.toString());
-    expect(decided.decisionByName).toBe("hr@b.com");
+    expect(decided.decisionById).toBe(admin._id.toString());
+    expect(decided.decisionByName).toBe("admin@b.com");
     expect(decided.decisionNote).toBe("ok");
     expect(decided.decidedAt).toBeTruthy();
   });
@@ -84,16 +102,16 @@ describe("expenses.service", () => {
   it("decideExpense on already-decided expense throws ConflictError 409", async () => {
     const { createExpense, decideExpense } = await import("./expenses.service.js");
     const employee = await makeUser("e@b.com");
-    const hr = await makeUser("hr@b.com", "HR");
+    const admin = await makeUser("admin@b.com", "ADMIN");
     const created = await createExpense(employee._id.toString(), {
       amount: 200,
       category: "TRAVEL",
       description: "Cab fare",
       incurredOn: new Date("2026-04-20"),
     });
-    await decideExpense(created.id, hr._id.toString(), "APPROVED");
+    await decideExpense(created.id, admin._id.toString(), "APPROVED");
     await expect(
-      decideExpense(created.id, hr._id.toString(), "REJECTED"),
+      decideExpense(created.id, admin._id.toString(), "REJECTED"),
     ).rejects.toMatchObject({ statusCode: 409 });
   });
 

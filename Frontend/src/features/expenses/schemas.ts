@@ -1,17 +1,14 @@
 import { z } from "zod";
 import { EXPENSE_CATEGORIES } from "./api/hooks";
 
-export const currencySchema = z
-  .string()
-  .length(3, "3-letter currency code")
-  .regex(/^[A-Z]{3}$/, "ISO 4217 (uppercase)");
+export const currencySchema = z.enum(["USD", "INR"]);
 
 export const SubmitExpenseSchema = z.object({
   amount: z.coerce
     .number({ message: "Amount must be a number" })
     .int("Amount must be a whole number of cents")
     .positive("Amount must be greater than zero"),
-  currency: currencySchema,
+  currency: currencySchema.default("INR"),
   category: z.enum(EXPENSE_CATEGORIES),
   description: z
     .string()

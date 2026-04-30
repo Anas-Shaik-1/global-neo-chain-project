@@ -26,12 +26,16 @@ export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 export const EXPENSE_STATUSES = ["PENDING", "APPROVED", "REJECTED"] as const;
 export type ExpenseStatus = (typeof EXPENSE_STATUSES)[number];
 
+export const CURRENCIES = ["USD", "INR"] as const;
+export type Currency = (typeof CURRENCIES)[number];
+
 export interface Expense {
   id: string;
   userId: string;
   userName: string | null;
   amount: number;
-  currency: string;
+  currency: Currency;
+  amountInr: number;
   category: ExpenseCategory;
   description: string;
   incurredOn: string;
@@ -45,11 +49,16 @@ export interface Expense {
   updatedAt: string;
 }
 
+export interface ExpensesSummary {
+  totalInrCents: number;
+}
+
 export interface PagedExpenses {
   items: Expense[];
   total: number;
   page: number;
   limit: number;
+  summary: ExpensesSummary;
 }
 
 export const expenseKeys = {
@@ -103,7 +112,7 @@ export function useExpense(id: string | undefined) {
 
 export interface CreateExpenseInput {
   amount: number;
-  currency?: string;
+  currency?: Currency;
   category: ExpenseCategory;
   description: string;
   incurredOn: string;

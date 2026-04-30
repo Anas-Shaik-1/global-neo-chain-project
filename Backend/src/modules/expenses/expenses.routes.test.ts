@@ -112,7 +112,7 @@ describe("/expenses", () => {
     expect(res.status).toBe(403);
   });
 
-  it("POST /expenses/:id/decide by HR returns 200 and updates status", async () => {
+  it("POST /expenses/:id/decide by HR returns 403 (admin-only)", async () => {
     const e = await seedAndToken("EMPLOYEE", "e@b.com");
     const hr = await seedAndToken("HR", "hr@b.com");
     const app = await buildApp();
@@ -124,11 +124,36 @@ describe("/expenses", () => {
       .post(`/expenses/${created.body.id}/decide`)
       .set("Authorization", `Bearer ${hr.token}`)
       .send({ decision: "APPROVED", note: "ok" });
+    expect(res.status).toBe(403);
+  });
+
+  it("POST /expenses/:id/decide by ADMIN returns 200 and updates status", async () => {
+    const e = await seedAndToken("EMPLOYEE", "e@b.com");
+    const admin = await seedAndToken("ADMIN", "admin@b.com");
+    const app = await buildApp();
+    const created = await request(app)
+      .post("/expenses")
+      .set("Authorization", `Bearer ${e.token}`)
+      .send(samplePayload);
+    const res = await request(app)
+      .post(`/expenses/${created.body.id}/decide`)
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ decision: "APPROVED", note: "ok" });
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("APPROVED");
-    expect(res.body.decisionById).toBe(hr.id);
+    expect(res.body.decisionById).toBe(admin.id);
     expect(res.body.decisionNote).toBe("ok");
     expect(res.body.decidedAt).toBeTruthy();
+  });
+
+  it("POST /expenses with currency=EUR is rejected by enum validation (400)", async () => {
+    const e = await seedAndToken("EMPLOYEE", "e@b.com");
+    const app = await buildApp();
+    const res = await request(app)
+      .post("/expenses")
+      .set("Authorization", `Bearer ${e.token}`)
+      .send({ ...samplePayload, currency: "EUR" });
+    expect(res.status).toBe(400);
   });
 
   it("POST /expenses/:id/receipt accepts PDF and persists receiptUrl", async () => {

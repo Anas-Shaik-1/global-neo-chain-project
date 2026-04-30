@@ -18,6 +18,9 @@ export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 export const EXPENSE_STATUSES = ["PENDING", "APPROVED", "REJECTED"] as const;
 export type ExpenseStatus = (typeof EXPENSE_STATUSES)[number];
 
+export const CURRENCIES = ["USD", "INR"] as const;
+export type Currency = (typeof CURRENCIES)[number];
+
 const expenseSchema = new Schema(
   {
     userId: {
@@ -30,10 +33,9 @@ const expenseSchema = new Schema(
     currency: {
       type: String,
       required: true,
-      default: "USD",
+      enum: CURRENCIES,
+      default: "INR",
       uppercase: true,
-      minlength: 3,
-      maxlength: 3,
     },
     category: {
       type: String,

@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { Bell, LogOut, Menu, Moon, ShieldCheck, Sun, User } from "lucide-react";
+import { LogOut, Menu, Moon, ShieldCheck, Sun, User } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "@/app/hooks";
 import { themeChanged } from "@/features/ui/uiSlice";
 import { logoutThunk } from "@/features/auth/authThunks";
+import { NotificationsPanel } from "@/features/notifications/NotificationsPanel";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -47,7 +49,9 @@ export function Topbar() {
         </SheetTrigger>
         <SheetContent side="left" className="p-0 pt-12">
           <div className="overflow-y-auto px-3 py-4">
-            <SidebarNav onNavigate={() => setMobileOpen(false)} />
+            {/* Mobile drawer always shows the full labeled nav. Tooltips on a
+                touch device are wrong UX, and the drawer has space anyway. */}
+            <SidebarNav collapsed={false} onNavigate={() => setMobileOpen(false)} />
           </div>
         </SheetContent>
       </Sheet>
@@ -55,21 +59,27 @@ export function Topbar() {
       <Separator orientation="vertical" className="hidden h-6 lg:block" />
       <div className="flex-1" />
       <div className="flex items-center gap-1.5">
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Notifications"
-          className="relative"
-        >
-          <Bell className="h-4 w-4" />
-        </Button>
+        <NotificationsPanel />
         <Button
           variant="ghost"
           size="icon"
           aria-label="Toggle theme"
           onClick={() => dispatch(themeChanged(theme === "dark" ? "light" : "dark"))}
+          className="relative"
         >
-          {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          <Sun
+            className={cn(
+              "h-4 w-4 transition-all duration-300",
+              theme === "dark" ? "scale-100 rotate-0" : "scale-0 -rotate-90",
+            )}
+          />
+          <Moon
+            className={cn(
+              "absolute h-4 w-4 transition-all duration-300",
+              theme === "dark" ? "scale-0 rotate-90" : "scale-100 rotate-0",
+            )}
+          />
+          <span className="sr-only">Toggle theme</span>
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
