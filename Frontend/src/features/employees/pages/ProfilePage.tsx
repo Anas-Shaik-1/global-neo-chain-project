@@ -16,6 +16,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { PageHeader } from "@/components/common/PageHeader";
+import { PageContainer } from "@/components/common/PageContainer";
 import { useAppSelector } from "@/app/hooks";
 import { useEmployee, useUpdateEmployee } from "../api/hooks";
 import { AvatarUpload } from "../components/AvatarUpload";
@@ -69,7 +70,7 @@ export function ProfilePage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8">
+    <PageContainer width="narrow" className="space-y-8">
       <PageHeader
         title="My profile"
         description="Keep your contact details, bio and resume up to date — your team sees this in the directory."
@@ -157,6 +158,6 @@ export function ProfilePage() {
           <ResumeUpload userId={data.id} currentUrl={data.resumeUrl} />
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

@@ -14,6 +14,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { PageHeader } from "@/components/common/PageHeader";
+import { PageContainer } from "@/components/common/PageContainer";
 import { SearchBar } from "@/components/common/SearchBar";
 import { useDepartmentsList, useCreateDepartment } from "../api/hooks";
 import { CreateDepartmentSchema, type CreateDepartmentValues } from "../schemas";
@@ -47,7 +48,7 @@ export function DepartmentsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <PageContainer width="default" className="space-y-6">
       <PageHeader
         title="Departments"
         description="Org structure and team groupings."
@@ -122,29 +123,31 @@ export function DepartmentsPage() {
               {search ? "No departments match your search." : "No departments yet."}
             </div>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-muted-foreground">
-                  <th className="py-2">Name</th>
-                  <th>Code</th>
-                  <th>Manager</th>
-                  <th>Employees</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((d) => (
-                  <tr key={d.id} className="border-b border-border/50">
-                    <td className="py-2">{d.name}</td>
-                    <td>{d.code}</td>
-                    <td>{d.managerName ?? "—"}</td>
-                    <td>{d.employeeCount}</td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-muted-foreground">
+                    <th className="py-2">Name</th>
+                    <th>Code</th>
+                    <th>Manager</th>
+                    <th>Employees</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {filtered.map((d) => (
+                    <tr key={d.id} className="border-b border-border/50">
+                      <td className="py-2">{d.name}</td>
+                      <td>{d.code}</td>
+                      <td>{d.managerName ?? "—"}</td>
+                      <td>{d.employeeCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

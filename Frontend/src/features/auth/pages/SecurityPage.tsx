@@ -29,6 +29,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/common/PageHeader";
+import { PageContainer } from "@/components/common/PageContainer";
 import {
   TwoFactorDisableSchema,
   TwoFactorVerifySchema,
@@ -125,7 +126,7 @@ export function SecurityPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8">
+    <PageContainer width="narrow" className="space-y-8">
       <PageHeader
         title="Security"
         description="Manage your password and two-factor authentication."
@@ -315,6 +316,6 @@ export function SecurityPage() {
           </Form>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }

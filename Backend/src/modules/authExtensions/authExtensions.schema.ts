@@ -54,6 +54,18 @@ export const TotpSetupResponse = z
   })
   .openapi("TotpSetupResponse");
 
+export const VerifyEmailBody = z
+  .object({
+    token: z.string().min(1),
+  })
+  .openapi("VerifyEmailBody");
+
+export const VerifyEmailResponse = z
+  .object({
+    email: z.string(),
+  })
+  .openapi("VerifyEmailResponse");
+
 const json = (schema: z.ZodTypeAny) => ({
   content: { "application/json": { schema } },
 });
@@ -141,5 +153,29 @@ registry.registerPath({
   responses: {
     200: { description: "Logged in", ...json(LoginResponse) },
     401: { description: "Invalid credentials or TOTP", ...json(ErrorResponse) },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/auth/verify-email/request",
+  tags: [tag],
+  security: sec,
+  responses: {
+    204: { description: "Verification email dispatched." },
+    401: { description: "Unauthorized", ...json(ErrorResponse) },
+    409: { description: "Email already verified", ...json(ErrorResponse) },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/auth/verify-email/confirm",
+  tags: [tag],
+  request: { body: { content: { "application/json": { schema: VerifyEmailBody } } } },
+  responses: {
+    200: { description: "Email verified", ...json(VerifyEmailResponse) },
+    400: { description: "Validation error", ...json(ErrorResponse) },
+    401: { description: "Invalid or expired token", ...json(ErrorResponse) },
   },
 });

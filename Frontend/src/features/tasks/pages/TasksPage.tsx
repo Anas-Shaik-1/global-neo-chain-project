@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/common/PageHeader";
+import { PageContainer } from "@/components/common/PageContainer";
 import { SearchBar } from "@/components/common/SearchBar";
 import {
   Select,
@@ -96,7 +97,7 @@ export function TasksPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <PageContainer width="wide" className="space-y-6">
       <PageHeader
         title="Tasks"
         description="Plan and track work across projects."
@@ -192,6 +193,6 @@ export function TasksPage() {
         }}
         task={activeTask}
       />
-    </div>
+    </PageContainer>
   );
 }

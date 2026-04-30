@@ -173,4 +173,71 @@ describe("authExtensions.service", () => {
     // expectation to a proper-mismatch generator. For now, treat as the common case.
     expect(ok).toBe(false);
   });
+
+  it("requestEmailVerification persists a hashed token and dispatches a mail message", async () => {
+    const u = await seedUser("a@b.com", "pw");
+    const { setMailDriver } = await import("../../lib/mail.js");
+    const captured: { to: string; subject: string; text: string }[] = [];
+    setMailDriver({
+      send: async (m) => {
+        captured.push({ to: m.to, subject: m.subject, text: m.text });
+      },
+    });
+    try {
+      const { requestEmailVerification } = await import("./authExtensions.service.js");
+      await requestEmailVerification(u._id.toString());
+      const { EmailVerificationToken } = await import(
+        "../../models/emailVerificationToken.model.js"
+      );
+      const tokens = await EmailVerificationToken.find({});
+      expect(tokens).toHaveLength(1);
+      expect(tokens[0]!.tokenHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(tokens[0]!.usedAt).toBeNull();
+      expect(captured).toHaveLength(1);
+      expect(captured[0]!.to).toBe(u.email);
+      expect(captured[0]!.text).toContain("/verify-email?token=");
+    } finally {
+      // Reset to default driver between tests.
+      const { setMailDriver: reset } = await import("../../lib/mail.js");
+      reset({ send: async () => {} });
+    }
+  });
+
+  it("requestEmailVerification on an already-verified user throws ConflictError", async () => {
+    const u = await seedUser("a@b.com", "pw");
+    const { User } = await import("../../models/user.model.js");
+    await User.updateOne({ _id: u._id }, { $set: { isVerified: true } });
+    const { requestEmailVerification } = await import("./authExtensions.service.js");
+    await expect(requestEmailVerification(u._id.toString())).rejects.toThrow(
+      /already verified|Conflict/i,
+    );
+  });
+
+  it("confirmEmailVerification with a valid token marks the user verified", async () => {
+    const u = await seedUser("a@b.com", "pw");
+    const { setMailDriver } = await import("../../lib/mail.js");
+    let capturedUrl: string | undefined;
+    setMailDriver({
+      send: async (m) => {
+        const match = m.text.match(/\/verify-email\?token=([0-9a-f]+)/);
+        if (match) capturedUrl = match[0];
+      },
+    });
+    try {
+      const { requestEmailVerification, confirmEmailVerification } = await import(
+        "./authExtensions.service.js"
+      );
+      await requestEmailVerification(u._id.toString());
+      const rawToken = new URL(`http://x.test${capturedUrl!}`).searchParams.get("token")!;
+      const out = await confirmEmailVerification(rawToken);
+      expect(out.email).toBe(u.email);
+
+      const { User } = await import("../../models/user.model.js");
+      const fresh = await User.findById(u._id);
+      expect(fresh?.isVerified).toBe(true);
+    } finally {
+      const { setMailDriver: reset } = await import("../../lib/mail.js");
+      reset({ send: async () => {} });
+    }
+  });
 });

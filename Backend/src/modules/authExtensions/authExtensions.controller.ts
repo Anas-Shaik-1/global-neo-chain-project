@@ -10,6 +10,7 @@ import type {
   TotpVerifyBody,
   TotpDisableBody,
   Login2FABody,
+  VerifyEmailBody,
 } from "./authExtensions.schema.js";
 
 function requireUser(req: Request) {
@@ -92,6 +93,26 @@ export async function postLogin2FA(req: Request, res: Response, next: NextFuncti
     );
     setRefreshCookie(res, refreshToken);
     res.json({ accessToken, user });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function postVerifyEmailRequest(req: Request, res: Response, next: NextFunction) {
+  try {
+    const me = requireUser(req);
+    await svc.requestEmailVerification(me.id);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function postVerifyEmailConfirm(req: Request, res: Response, next: NextFunction) {
+  try {
+    const body = req.validated as z.infer<typeof VerifyEmailBody>;
+    const { email } = await svc.confirmEmailVerification(body.token);
+    res.json({ email });
   } catch (err) {
     next(err);
   }

@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/common/PageHeader";
+import { PageContainer } from "@/components/common/PageContainer";
 import { MetricCard } from "@/components/common/MetricCard";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useAppSelector } from "@/app/hooks";
@@ -438,7 +439,7 @@ export function DashboardPage() {
 
   if (role === "ADMIN") {
     return (
-      <div className="space-y-10">
+      <PageContainer width="wide" className="space-y-10">
         <PageHeader
           title="Admin overview"
           description="Company-wide metrics."
@@ -462,13 +463,13 @@ export function DashboardPage() {
           </p>
         </div>
         <EmployeeSection data={employee.data} />
-      </div>
+      </PageContainer>
     );
   }
 
   if (role === "HR") {
     return (
-      <div className="space-y-10">
+      <PageContainer width="wide" className="space-y-10">
         <PageHeader title="HR overview" description="Pulse of the team." />
         <HRSection data={hr.data} />
 
@@ -481,17 +482,17 @@ export function DashboardPage() {
           </p>
         </div>
         <EmployeeSection data={employee.data} />
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <PageContainer width="wide" className="space-y-6">
       <PageHeader
         title="Today"
         description="A snapshot of your day at Global NeoChain."
       />
       <EmployeeSection data={employee.data} />
-    </div>
+    </PageContainer>
   );
 }

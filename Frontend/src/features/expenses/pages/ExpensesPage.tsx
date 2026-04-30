@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/common/PageHeader";
+import { PageContainer } from "@/components/common/PageContainer";
 import { SearchBar } from "@/components/common/SearchBar";
 import { useAppSelector } from "@/app/hooks";
 import {
@@ -164,7 +165,7 @@ export function ExpensesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <PageContainer width="wide" className="space-y-6">
       <PageHeader
         title="Expenses"
         description="Submit reimbursements and approve team requests."
@@ -201,6 +202,6 @@ export function ExpensesPage() {
         expense={decideTarget}
         decision={decideKind}
       />
-    </div>
+    </PageContainer>
   );
 }

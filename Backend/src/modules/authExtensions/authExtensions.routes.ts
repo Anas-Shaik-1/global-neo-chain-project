@@ -10,6 +10,7 @@ import {
   TotpVerifyBody,
   TotpDisableBody,
   Login2FABody,
+  VerifyEmailBody,
 } from "./authExtensions.schema.js";
 
 export const authExtensionsRouter = Router();
@@ -54,4 +55,16 @@ authExtensionsRouter.post(
   authLimiter,
   validate(Login2FABody),
   ctl.postLogin2FA,
+);
+
+authExtensionsRouter.post(
+  "/verify-email/request",
+  requireAuth,
+  ctl.postVerifyEmailRequest,
+);
+
+authExtensionsRouter.post(
+  "/verify-email/confirm",
+  validate(VerifyEmailBody),
+  ctl.postVerifyEmailConfirm,
 );

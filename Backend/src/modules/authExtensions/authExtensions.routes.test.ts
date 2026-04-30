@@ -145,4 +145,71 @@ describe("/auth-extensions routes", () => {
     expect(res.body).toEqual({ requires2FA: true });
     expect(res.headers["set-cookie"]).toBeUndefined();
   });
+
+  it("POST /auth/verify-email/request requires bearer auth", async () => {
+    const app = await buildApp();
+    const res = await request(app).post("/auth/verify-email/request").send();
+    expect(res.status).toBe(401);
+  });
+
+  it("POST /auth/verify-email/request returns 204 when authed and unverified", async () => {
+    await seedUser("a@b.com", "pw");
+    const { setMailDriver } = await import("../../lib/mail.js");
+    setMailDriver({ send: async () => {} });
+    try {
+      const app = await buildApp();
+      const login = await request(app)
+        .post("/auth/login")
+        .send({ email: "a@b.com", password: "pw" });
+      const res = await request(app)
+        .post("/auth/verify-email/request")
+        .set("Authorization", `Bearer ${login.body.accessToken}`)
+        .send();
+      expect(res.status).toBe(204);
+      const { EmailVerificationToken } = await import(
+        "../../models/emailVerificationToken.model.js"
+      );
+      expect(await EmailVerificationToken.countDocuments()).toBe(1);
+    } finally {
+      const { setMailDriver: reset } = await import("../../lib/mail.js");
+      reset({ send: async () => {} });
+    }
+  });
+
+  it("POST /auth/verify-email/confirm with a valid token returns 200 and flips isVerified", async () => {
+    const u = await seedUser("a@b.com", "pw");
+    const { setMailDriver } = await import("../../lib/mail.js");
+    let capturedUrl: string | undefined;
+    setMailDriver({
+      send: async (m) => {
+        const match = m.text.match(/\/verify-email\?token=([0-9a-f]+)/);
+        if (match) capturedUrl = match[0];
+      },
+    });
+    try {
+      const app = await buildApp();
+      const login = await request(app)
+        .post("/auth/login")
+        .send({ email: "a@b.com", password: "pw" });
+      const reqRes = await request(app)
+        .post("/auth/verify-email/request")
+        .set("Authorization", `Bearer ${login.body.accessToken}`)
+        .send();
+      expect(reqRes.status).toBe(204);
+
+      const rawToken = new URL(`http://x.test${capturedUrl!}`).searchParams.get("token")!;
+      const confirmRes = await request(app)
+        .post("/auth/verify-email/confirm")
+        .send({ token: rawToken });
+      expect(confirmRes.status).toBe(200);
+      expect(confirmRes.body.email).toBe("a@b.com");
+
+      const { User } = await import("../../models/user.model.js");
+      const fresh = await User.findById(u._id);
+      expect(fresh?.isVerified).toBe(true);
+    } finally {
+      const { setMailDriver: reset } = await import("../../lib/mail.js");
+      reset({ send: async () => {} });
+    }
+  });
 });

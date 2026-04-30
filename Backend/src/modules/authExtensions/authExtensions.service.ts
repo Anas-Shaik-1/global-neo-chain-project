@@ -4,6 +4,7 @@ import { generateSecret, generateURI, verify as otpVerify } from "otplib";
 import qrcode from "qrcode";
 import { User } from "../../models/user.model.js";
 import { PasswordResetToken } from "../../models/passwordResetToken.model.js";
+import { EmailVerificationToken } from "../../models/emailVerificationToken.model.js";
 import { config } from "../../config/index.js";
 import { logger } from "../../lib/logger.js";
 import { getMailDriver } from "../../lib/mail.js";
@@ -12,9 +13,15 @@ import {
   issueTokensFor,
   type AuthPayload,
 } from "../auth/auth.service.js";
-import { UnauthorizedError, ValidationError } from "../../lib/errors.js";
+import {
+  UnauthorizedError,
+  ValidationError,
+  NotFoundError,
+  ConflictError,
+} from "../../lib/errors.js";
 
 const RESET_TTL_MS = 60 * 60 * 1000; // 1 hour
+const EMAIL_VERIFY_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const BCRYPT_ROUNDS = 12;
 const ISSUER = "Global NeoChain";
 // Allow 1 step (~30s) of drift either side to be friendly to slightly-skewed clocks.
@@ -228,4 +235,75 @@ export async function loginWith2FA(
   if (!valid) throw new UnauthorizedError("Invalid TOTP code");
 
   return issueTokensFor(user);
+}
+
+/**
+ * Begin the email-verification flow. Generates a random raw token, persists
+ * only its sha256 hash, and dispatches a verification link via the
+ * {@link MailDriver}. The link is valid for 24 hours.
+ *
+ * Throws {@link ConflictError} if the user is already verified — callers
+ * (e.g. the HR auto-send hook) can catch + ignore that case.
+ */
+export async function requestEmailVerification(userId: string): Promise<void> {
+  const user = await User.findById(userId);
+  if (!user) throw new NotFoundError("User");
+  if (user.isVerified) throw new ConflictError("Email already verified");
+
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  const tokenHash = sha256(rawToken);
+  const expiresAt = new Date(Date.now() + EMAIL_VERIFY_TTL_MS);
+
+  await EmailVerificationToken.create({
+    userId: user._id,
+    tokenHash,
+    expiresAt,
+  });
+
+  const verifyUrl = `${config.FRONTEND_ORIGIN}/verify-email?token=${rawToken}`;
+  const subject = "Verify your Global NeoChain email";
+  const text =
+    `Welcome to Global NeoChain.\n\n` +
+    `Click this link within 24 hours to verify your email:\n${verifyUrl}\n\n` +
+    `If you didn't request this, ignore this message.`;
+  const html =
+    `<p>Welcome to Global NeoChain.</p>` +
+    `<p><a href="${verifyUrl}">Click here to verify your email</a></p>` +
+    `<p>The link expires in <strong>24 hours</strong>.</p>`;
+
+  await getMailDriver().send({ to: user.email, subject, text, html });
+
+  // Structured trace for ops + test interception (mirrors the password-reset path).
+  logger.info(
+    { userId: user._id.toString(), email: user.email, verifyUrl, expiresAt },
+    "email verification link dispatched via MailDriver",
+  );
+}
+
+/**
+ * Confirm an email verification by exchanging a raw token for a verified
+ * status flip. Returns the user's id + email so callers can confirm what was
+ * verified.
+ */
+export async function confirmEmailVerification(
+  rawToken: string,
+): Promise<{ userId: string; email: string }> {
+  const tokenHash = sha256(rawToken);
+  const record = await EmailVerificationToken.findOne({ tokenHash });
+  if (!record) throw new UnauthorizedError("Invalid verification token");
+  if (record.usedAt) throw new UnauthorizedError("Verification token already used");
+  if (record.expiresAt.getTime() < Date.now()) {
+    throw new UnauthorizedError("Verification token expired");
+  }
+
+  const user = await User.findById(record.userId);
+  if (!user) throw new UnauthorizedError("User no longer exists");
+
+  user.isVerified = true;
+  await user.save();
+
+  record.usedAt = new Date();
+  await record.save();
+
+  return { userId: user._id.toString(), email: user.email };
 }

@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/common/PageHeader";
+import { PageContainer } from "@/components/common/PageContainer";
 import { ChangePasswordSchema, type ChangePasswordValues } from "../schemas";
 
 export function ChangePasswordPage() {
@@ -65,7 +66,7 @@ export function ChangePasswordPage() {
   }
 
   return (
-    <div className="mx-auto max-w-xl space-y-8">
+    <PageContainer width="narrow" className="space-y-8">
       <PageHeader
         title="Change password"
         description={
@@ -132,6 +133,6 @@ export function ChangePasswordPage() {
           </Form>
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

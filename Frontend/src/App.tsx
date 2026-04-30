@@ -13,6 +13,7 @@ import { RequestResetPage } from "@/features/auth/pages/RequestResetPage";
 import { ResetPasswordPage } from "@/features/auth/pages/ResetPasswordPage";
 import { ChangePasswordPage } from "@/features/auth/pages/ChangePasswordPage";
 import { SecurityPage } from "@/features/auth/pages/SecurityPage";
+import { VerifyEmailPage } from "@/features/auth/pages/VerifyEmailPage";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ProfilePage } from "@/features/employees/pages/ProfilePage";
@@ -41,6 +42,7 @@ function Routed() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/forgot-password" element={<RequestResetPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/verify-email" element={<VerifyEmailPage />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />

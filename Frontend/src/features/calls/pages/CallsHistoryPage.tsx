@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PageHeader } from "@/components/common/PageHeader";
+import { PageContainer } from "@/components/common/PageContainer";
 import { SearchBar } from "@/components/common/SearchBar";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { useAppSelector } from "@/app/hooks";
@@ -119,7 +120,7 @@ export function CallsHistoryPage() {
   }, [history.data, search, me?.id]);
 
   return (
-    <div className="space-y-6">
+    <PageContainer width="default" className="space-y-6">
       <PageHeader
         title="Calls"
         description="Recent video calls with your colleagues."
@@ -141,7 +142,7 @@ export function CallsHistoryPage() {
         />
       )}
 
-      <div className="overflow-hidden rounded-lg border border-border bg-card">
+      <div className="overflow-x-auto rounded-lg border border-border bg-card">
         {history.isLoading ? (
           <div className="space-y-2 p-4">
             <Skeleton className="h-10 w-full" />
@@ -185,6 +186,6 @@ export function CallsHistoryPage() {
           void start(userId, userName);
         }}
       />
-    </div>
+    </PageContainer>
   );
 }

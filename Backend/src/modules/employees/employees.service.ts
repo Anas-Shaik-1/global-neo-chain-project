@@ -6,6 +6,7 @@ import { Department } from "../../models/department.model.js";
 import { Position } from "../../models/position.model.js";
 import { ConflictError, NotFoundError, ForbiddenError } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
+import { requestEmailVerification } from "../authExtensions/authExtensions.service.js";
 
 interface PublicShape {
   id: string;
@@ -141,6 +142,20 @@ export async function createEmployee(input: CreateInput): Promise<{ profile: Ful
       isActive: true,
     });
     logger.info({ email: created.email }, `created employee ${created.email} with temp password ${tempPassword}`);
+
+    // Best-effort: kick off email verification so the new hire receives a
+    // verification link straight after onboarding. We deliberately swallow
+    // any mail-driver / token-creation failures so the create flow always
+    // succeeds — HR can resend later via the in-app banner.
+    try {
+      await requestEmailVerification(created._id.toString());
+    } catch (err) {
+      logger.warn(
+        { email: created.email, err: (err as Error).message },
+        "auto-send verification email failed; HR may resend later",
+      );
+    }
+
     const deptName = await loadDepartmentName(created.departmentId);
     return { profile: toFullProfile(created, deptName), tempPassword };
   } catch (err) {

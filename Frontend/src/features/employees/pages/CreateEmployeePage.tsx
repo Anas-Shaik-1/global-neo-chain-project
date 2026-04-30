@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PageContainer } from "@/components/common/PageContainer";
 import { useCreateEmployee, useDepartmentsList } from "../api/hooks";
 import { CreateEmployeeSchema, type CreateEmployeeValues } from "../schemas";
 
@@ -60,7 +61,7 @@ export function CreateEmployeePage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <PageContainer width="narrow">
       <Card>
         <CardHeader><CardTitle>New employee</CardTitle></CardHeader>
         <CardContent>
@@ -172,6 +173,6 @@ export function CreateEmployeePage() {
           </Form>
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

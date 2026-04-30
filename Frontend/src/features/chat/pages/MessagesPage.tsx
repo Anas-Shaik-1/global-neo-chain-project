@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/common/PageHeader";
+import { PageContainer } from "@/components/common/PageContainer";
 import { SearchBar } from "@/components/common/SearchBar";
 import { useAppSelector } from "@/app/hooks";
 import {
@@ -96,7 +97,7 @@ export function MessagesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <PageContainer width="full" className="space-y-6">
       <PageHeader
         title="Messages"
         description="Direct conversations with your colleagues."
@@ -159,6 +160,6 @@ export function MessagesPage() {
         meId={me?.id}
         onOpened={(id) => setSelectedId(id)}
       />
-    </div>
+    </PageContainer>
   );
 }

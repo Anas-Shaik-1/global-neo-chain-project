@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/common/PageHeader";
+import { PageContainer } from "@/components/common/PageContainer";
 import { MetricCard } from "@/components/common/MetricCard";
 import {
   useClockIn,
@@ -376,7 +377,7 @@ export function AttendancePage() {
     endLunchMut.isPending;
 
   return (
-    <div className="space-y-6">
+    <PageContainer width="default" className="space-y-6">
       <PageHeader
         title="Attendance"
         description="Clock in to start your day."
@@ -508,6 +509,6 @@ export function AttendancePage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

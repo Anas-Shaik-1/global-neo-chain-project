@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/common/StatusBadge";
+import { PageContainer } from "@/components/common/PageContainer";
 import { useAppSelector } from "@/app/hooks";
 import { useCall } from "@/features/calls/CallProvider";
 import {
@@ -36,7 +37,7 @@ export function EmployeeDetailPage() {
   const full = data as FullProfile;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <PageContainer width="narrow" className="space-y-6">
       <Card className="relative overflow-hidden">
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
         <CardHeader>
@@ -140,7 +141,7 @@ export function EmployeeDetailPage() {
           </Button>
         )}
       </div>
-    </div>
+    </PageContainer>
   );
 }
 
