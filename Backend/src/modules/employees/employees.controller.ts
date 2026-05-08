@@ -67,7 +67,13 @@ export async function postApproveHr(req: Request, res: Response, next: NextFunct
   try {
     const me = requireUser(req);
     const id = req.params.id as string;
-    const out = await svc.approveAtHrStage(id, me.id);
+    // departmentId is optional in the body — when present, the HR is also
+    // placing the candidate at approval time. Validation (24-hex / null) is
+    // handled in the service against the Department collection.
+    const body = (req.validated ?? req.body) as { departmentId?: string | null };
+    const out = await svc.approveAtHrStage(id, me.id, {
+      departmentId: body?.departmentId,
+    });
     res.json(out);
   } catch (err) {
     next(err);
@@ -160,8 +166,18 @@ export async function postAvatar(req: Request, res: Response, next: NextFunction
     if (u.avatarKey) await storage.delete(u.avatarKey);
     u.avatarKey = saved.key;
     u.avatarUrl = saved.url;
+    u.avatarVariants = saved.variants
+      ? {
+          small: saved.variants.small,
+          medium: saved.variants.medium,
+          large: saved.variants.large,
+        }
+      : { small: null, medium: null, large: null };
     await u.save();
-    res.json({ avatarUrl: saved.url });
+    res.json({
+      avatarUrl: saved.url,
+      avatarVariants: saved.variants ?? null,
+    });
   } catch (err) {
     next(err);
   }
@@ -175,6 +191,7 @@ export async function deleteAvatar(req: Request, res: Response, next: NextFuncti
     if (u.avatarKey) await storage.delete(u.avatarKey);
     u.avatarKey = undefined;
     u.avatarUrl = undefined;
+    u.avatarVariants = { small: null, medium: null, large: null };
     await u.save();
     res.status(204).send();
   } catch (err) {

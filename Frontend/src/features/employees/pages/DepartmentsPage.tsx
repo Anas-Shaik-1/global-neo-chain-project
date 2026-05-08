@@ -33,6 +33,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/common/PageHeader";
 import { PageContainer } from "@/components/common/PageContainer";
+import { Pagination } from "@/components/common/Pagination";
+import { usePagination } from "@/hooks/usePagination";
 import { SearchBar } from "@/components/common/SearchBar";
 import { RoleGate } from "@/features/auth/RoleGate";
 import {
@@ -284,6 +286,7 @@ export function DepartmentsPage() {
       (d) => d.name.toLowerCase().includes(t) || d.code.toLowerCase().includes(t),
     );
   }, [list.data?.items, search]);
+  const paginated = usePagination(filtered, 10);
 
   function onCreate(values: CreateDepartmentValues) {
     setError(null);
@@ -381,7 +384,7 @@ export function DepartmentsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((d) => (
+                  {paginated.items.map((d) => (
                     <tr key={d.id} className="border-b border-border/50">
                       <td className="py-2">{d.name}</td>
                       <td>{d.code}</td>
@@ -420,6 +423,15 @@ export function DepartmentsPage() {
                   ))}
                 </tbody>
               </table>
+              <Pagination
+                page={paginated.page}
+                pageSize={paginated.pageSize}
+                totalPages={paginated.totalPages}
+                totalItems={paginated.totalItems}
+                onPageChange={paginated.setPage}
+                onPageSizeChange={paginated.setPageSize}
+                className="px-2"
+              />
             </div>
           )}
         </CardContent>

@@ -12,16 +12,48 @@ export const currencySchema = z
   .length(3, "3-letter currency code")
   .regex(/^[A-Z]{3}$/, "ISO 4217 (uppercase)");
 
+/**
+ * Rupee → paise transformer. The form lets users type a natural ₹ amount
+ * (e.g. "50000" or "50000.50"); we coerce that to integer paise on the way
+ * to the API. Two decimals are honoured; anything beyond is rounded to the
+ * nearest paisa via Math.round.
+ */
+const rupeeAmount = z
+  .union([z.string(), z.number()])
+  .transform((v, ctx) => {
+    const raw = typeof v === "number" ? String(v) : v.trim();
+    if (raw === "") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Amount is required",
+      });
+      return z.NEVER;
+    }
+    if (!/^\d+(\.\d{1,2})?$/.test(raw)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Use rupees, up to two decimals (e.g. 50000 or 50000.75)",
+      });
+      return z.NEVER;
+    }
+    const rupees = Number(raw);
+    if (!Number.isFinite(rupees) || rupees < 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Amount must be zero or greater",
+      });
+      return z.NEVER;
+    }
+    return Math.round(rupees * 100);
+  });
+
 export const breakdownItemSchema = z.object({
   label: z
     .string()
     .trim()
     .min(1, "Label is required")
     .max(60, "Label must be 60 characters or fewer"),
-  amount: z.coerce
-    .number({ message: "Amount must be a number" })
-    .int("Amount must be a whole number of cents")
-    .nonnegative("Amount must be zero or greater"),
+  amount: rupeeAmount,
   kind: z.enum(BREAKDOWN_KINDS),
 });
 export type BreakdownItemValues = z.infer<typeof breakdownItemSchema>;
@@ -33,10 +65,7 @@ export const GeneratePayslipSchema = z.object({
     .regex(objectIdRegex, "Invalid employee id"),
   month: monthSchema,
   currency: currencySchema,
-  gross: z.coerce
-    .number({ message: "Gross must be a number" })
-    .int("Gross must be a whole number of cents")
-    .nonnegative("Gross must be zero or greater"),
+  gross: rupeeAmount,
   breakdown: z.array(breakdownItemSchema).optional(),
   notes: z
     .string()

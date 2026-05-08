@@ -17,8 +17,16 @@ const APPROVAL_BLOCK_MESSAGES: Record<Exclude<ApprovalStatus, "ACTIVE">, string>
 };
 
 // Mirror of JWT_REFRESH_TTL ("7d") expressed in ms for the DB expiresAt index.
-// If you change JWT_REFRESH_TTL in env, update this too.
-const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+// Exported so the cookie max-age in auth.controller.ts can reference the same
+// constant — keeping the JWT exp and the HTTP-only cookie lifetime in lockstep.
+export const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+// Pre-computed bcrypt hash used for constant-time login on the no-user branch.
+// We compare the submitted password against this dummy hash so the response
+// time when the email is unknown is indistinguishable from the response time
+// when the email exists but the password is wrong — closing a user-enumeration
+// side channel.
+const DUMMY_HASH = bcrypt.hashSync("invalid-password-placeholder", 12);
 
 export interface PublicUser {
   id: string;
@@ -27,6 +35,7 @@ export interface PublicUser {
   role: Role;
   isProjectManager: boolean;
   isVerified: boolean;
+  isPhoneVerified: boolean;
   mustChangePassword: boolean;
   totpEnabled: boolean;
   createdAt: Date;
@@ -53,6 +62,7 @@ function toPublicUser(user: FullUser): PublicUser {
     role: user.role,
     isProjectManager: Boolean(user.isProjectManager),
     isVerified: user.isVerified,
+    isPhoneVerified: Boolean(user.isPhoneVerified),
     mustChangePassword: Boolean(user.mustChangePassword),
     totpEnabled: Boolean(user.totpEnabled),
     createdAt: user.createdAt,
@@ -72,7 +82,12 @@ function toPublicUser(user: FullUser): PublicUser {
  */
 export async function loginCheckCredentials(email: string, password: string): Promise<FullUser> {
   const user = (await User.findOne({ email: email.toLowerCase() }).select("+passwordHash")) as FullUser | null;
-  if (!user) throw new UnauthorizedError("Invalid credentials");
+  if (!user) {
+    // Burn ~one bcrypt-compare worth of CPU so the no-user path takes the
+    // same wall-clock time as the wrong-password path. Result is discarded.
+    await bcrypt.compare(password, DUMMY_HASH);
+    throw new UnauthorizedError("Invalid credentials");
+  }
 
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) throw new UnauthorizedError("Invalid credentials");
@@ -138,6 +153,17 @@ export async function rotate(rawRefreshToken: string): Promise<{ accessToken: st
 
   const user = await User.findById(claimed.userId);
   if (!user) throw new UnauthorizedError("User not found");
+
+  // Refresh-time gate: if the user has since been deactivated or fell out of
+  // ACTIVE approval (e.g. suspended pending review), revoke the entire family
+  // so a stale refresh cookie can't keep minting access tokens.
+  if (user.isActive === false || user.approvalStatus !== "ACTIVE") {
+    await RefreshToken.updateMany(
+      { family: claimed.family, revokedAt: null },
+      { $set: { revokedAt: new Date() } },
+    );
+    throw new UnauthorizedError("Account is not active");
+  }
 
   const accessToken = signAccessToken({
     sub: user._id.toString(),

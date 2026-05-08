@@ -26,6 +26,12 @@ export function getCallsNamespace(): Namespace | null {
 export function attachSocketServer(http: HttpServer): IOServer {
   const io = new IOServer(http, {
     cors: { origin: config.FRONTEND_ORIGIN, credentials: true },
+    // Tighten ping cadence: defaults (25s/20s) leave a ~45s window where a
+    // user who lost their network still appears online in presence/chat.
+    // 15s + 10s halves that to ~25s, which is the right tradeoff for
+    // chat-grade UX without burning meaningful battery on idle clients.
+    pingInterval: 15000,
+    pingTimeout: 10000,
   });
   const chatNs = io.of("/chat");
   attachChatNamespace(chatNs);

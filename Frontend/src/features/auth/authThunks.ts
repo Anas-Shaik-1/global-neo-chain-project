@@ -1,6 +1,10 @@
 import { createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
 import { getApi } from "@/api/axios";
+import { queryClient } from "@/lib/queryClient";
+import { disconnectChatSocket } from "@/features/chat/socket";
+import { disconnectCallsSocket } from "@/features/calls/socket";
+import { presenceCleared } from "@/features/chat/presenceSlice";
 import { sessionEstablished, sessionCleared, accessTokenRefreshed, type AuthUser } from "./authSlice";
 
 interface LoginInput {
@@ -68,8 +72,25 @@ export const logoutThunk = createAsyncThunk("auth/logout", async (_arg, { dispat
     await getApi().post("/auth/logout");
   } catch {
     // ignore — logout is best-effort
+  } finally {
+    dispatch(sessionCleared());
+    dispatch(presenceCleared());
+    // Tear down realtime sockets so the next login establishes fresh
+    // connections with the new auth context.
+    try {
+      disconnectChatSocket();
+    } catch {
+      // ignore
+    }
+    try {
+      disconnectCallsSocket();
+    } catch {
+      // ignore
+    }
+    // Drop all cached server state so a subsequent login doesn't briefly
+    // render the previous user's data.
+    queryClient.clear();
   }
-  dispatch(sessionCleared());
 });
 
 export const bootstrapSessionThunk = createAsyncThunk<

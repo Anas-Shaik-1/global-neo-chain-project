@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { registry } from "../../openapi/registry.js";
 import { LoginResponse, ErrorResponse } from "../auth/auth.schema.js";
+import { strongPassword } from "../../lib/passwordValidation.js";
 
 export const RequestPasswordResetBody = z
   .object({
@@ -11,14 +12,14 @@ export const RequestPasswordResetBody = z
 export const ConfirmPasswordResetBody = z
   .object({
     token: z.string().min(1),
-    newPassword: z.string().min(8).max(200),
+    newPassword: strongPassword,
   })
   .openapi("ConfirmPasswordResetBody");
 
 export const ChangePasswordBody = z
   .object({
     currentPassword: z.string().min(1),
-    newPassword: z.string().min(8).max(200),
+    newPassword: strongPassword,
   })
   .openapi("ChangePasswordBody");
 
@@ -65,6 +66,12 @@ export const VerifyEmailResponse = z
     email: z.string(),
   })
   .openapi("VerifyEmailResponse");
+
+export const VerifyPhoneBody = z
+  .object({
+    code: z.string().regex(/^\d{6}$/, "6-digit code"),
+  })
+  .openapi("VerifyPhoneBody");
 
 const json = (schema: z.ZodTypeAny) => ({
   content: { "application/json": { schema } },
@@ -177,5 +184,29 @@ registry.registerPath({
     200: { description: "Email verified", ...json(VerifyEmailResponse) },
     400: { description: "Validation error", ...json(ErrorResponse) },
     401: { description: "Invalid or expired token", ...json(ErrorResponse) },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/auth/phone/request-verify",
+  tags: [tag],
+  security: sec,
+  responses: {
+    204: { description: "OTP sent via SMS" },
+    400: { description: "No phone number set", ...json(ErrorResponse) },
+    409: { description: "Already verified", ...json(ErrorResponse) },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/auth/phone/verify",
+  tags: [tag],
+  security: sec,
+  request: { body: { content: { "application/json": { schema: VerifyPhoneBody } } } },
+  responses: {
+    204: { description: "Verified" },
+    401: { description: "Wrong/expired code", ...json(ErrorResponse) },
   },
 });

@@ -1,3 +1,11 @@
+/* Dashboard widget grid (react-grid-layout). The library ships its own
+   geometry styles + a minimal resize handle. We restyle the visual layer
+   in the WidgetGrid component, but the core positioning rules MUST come
+   from the upstream sheet — DON'T inline these.
+   IMPORTANT: @import must precede @tailwind directives; vite/postcss errors
+   if it appears after them. */
+@import "react-grid-layout/css/styles.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -57,9 +65,23 @@
   }
   body {
     font-family: theme(fontFamily.sans);
-    font-feature-settings: "ss01", "cv01", "cv11";
+    /* Default to "normal" font features. The earlier `ss01, cv01, cv11`
+       stack reshaped the lowercase `f` (and other glyphs) in DM Sans into
+       a curly stylistic alternate that read as decorative — fine in body
+       copy at small sizes, distracting in the landing page hero where
+       "first" became "ƒirst". Use only kerning + standard ligatures, both
+       on by default in modern engines. */
+    font-feature-settings: normal;
   }
-  h1, h2, h3, h4 { font-family: theme(fontFamily.display); letter-spacing: -0.02em; }
+  h1, h2, h3, h4 {
+    font-family: theme(fontFamily.display);
+    letter-spacing: -0.02em;
+    /* Belt-and-braces: explicitly clear feature settings on display
+       headings so a future `font-feature-settings` rule on body can't
+       accidentally re-introduce decorative glyphs in giant copy. */
+    font-feature-settings: normal;
+    font-variant-ligatures: normal;
+  }
   code, pre { font-family: theme(fontFamily.mono); }
 
   /* Suppress Edge/IE password reveal (we render our own toggle in PasswordInput) */
@@ -75,6 +97,31 @@
     position: absolute;
     right: 0;
   }
+
+  /* Chrome/Brave's autofill stamps a light yellow background + dark text
+     onto inputs the moment a saved credential is selected, which clashes
+     with the dark theme (the input flashes white). We can't override the
+     real `background-color` because browsers protect the autofill state,
+     but a giant inset box-shadow paints over it, and
+     `-webkit-text-fill-color` keeps the text legible. The 9999s transition
+     stops Chrome from animating its yellow flash on initial autofill. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active,
+  textarea:-webkit-autofill,
+  textarea:-webkit-autofill:hover,
+  textarea:-webkit-autofill:focus,
+  select:-webkit-autofill,
+  select:-webkit-autofill:hover,
+  select:-webkit-autofill:focus {
+    -webkit-text-fill-color: hsl(var(--foreground));
+    -webkit-box-shadow: 0 0 0 1000px hsl(var(--background)) inset;
+    box-shadow: 0 0 0 1000px hsl(var(--background)) inset;
+    caret-color: hsl(var(--foreground));
+    transition: background-color 9999s ease-in-out 0s,
+      color 9999s ease-in-out 0s;
+  }
 }
 
 @layer base {
@@ -83,5 +130,65 @@
       radial-gradient(at 20% 0%, hsla(195 90% 55% / 0.04) 0px, transparent 50%),
       radial-gradient(at 80% 100%, hsla(210 90% 50% / 0.04) 0px, transparent 50%);
     background-attachment: fixed;
+  }
+}
+
+/* Dashboard widget grid (react-grid-layout) — visual layer.
+   The geometry rules come from the upstream stylesheet imported at the
+   top of this file; everything here just restyles handles + frames so
+   the widgets look native to our dark theme. */
+.widget-grid .react-grid-item {
+  transition-property: transform, box-shadow;
+}
+.widget-grid .react-grid-item.react-grid-placeholder {
+  background: hsl(var(--primary) / 0.18);
+  border: 1px dashed hsl(var(--primary) / 0.6);
+  border-radius: 0.75rem;
+  opacity: 1;
+}
+/* Default RGL resize handle is a tiny right-bottom triangle. Replace it
+   with a circular grip that's only visible while editing (we only inject
+   the handle DOM at all when isResizable=true, so the rule scope below
+   already lines up with edit mode). */
+.widget-grid--editing .react-resizable-handle {
+  width: 18px;
+  height: 18px;
+  bottom: 4px;
+  right: 4px;
+  background-image: none;
+  border-right: 2px solid hsl(var(--primary) / 0.7);
+  border-bottom: 2px solid hsl(var(--primary) / 0.7);
+  border-bottom-right-radius: 4px;
+  cursor: se-resize;
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+.widget-grid--editing .react-resizable-handle:hover {
+  opacity: 1;
+}
+/* While dragging an item, lift it slightly above the rest. */
+.widget-grid .react-grid-item.react-draggable-dragging {
+  z-index: 30;
+  cursor: grabbing;
+  box-shadow: 0 24px 50px -16px hsl(0 0% 0% / 0.6);
+}
+
+/* Continuous horizontal marquee used by the landing page client strip.
+   The track contains the wordmarks twice; translateX(-50%) wraps exactly
+   one set so the loop is seamless. Pauses on hover so a visitor can read
+   any individual brand. */
+@keyframes marquee-x {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.animate-marquee-x {
+  animation: marquee-x 38s linear infinite;
+}
+.animate-marquee-x:hover {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee-x {
+    animation: none;
   }
 }

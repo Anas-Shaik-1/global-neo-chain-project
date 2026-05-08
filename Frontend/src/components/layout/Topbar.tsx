@@ -16,26 +16,31 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Logo } from "@/components/brand/Logo";
 import { SidebarNav } from "./SidebarNav";
 
+/**
+ * Full-width top bar. Hosts the brand on the left and the action cluster
+ * (notifications, theme toggle, profile) on the right. Spans the entire
+ * viewport above both the Sidebar and the main content area.
+ */
 export function Topbar() {
   const dispatch = useAppDispatch();
   const user = useAppSelector((s) => s.auth.user);
   const theme = useAppSelector((s) => s.ui.theme);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const initials = user?.name
-    ?.split(" ")
-    .map((p) => p[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase() ?? "??";
+
+  const initials =
+    user?.name
+      ?.split(" ")
+      .map((p) => p[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() ?? "??";
 
   return (
-    <header className="relative flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card px-4 lg:px-6">
-      {/* Mobile drawer trigger — invisible above lg where the sidebar is permanent. */}
+    <header className="relative z-30 flex h-20 shrink-0 items-center gap-3 border-b border-border/60 bg-card px-4 sm:px-6 lg:px-8">
+      {/* Mobile menu trigger */}
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetTrigger asChild>
           <Button
@@ -47,19 +52,49 @@ export function Topbar() {
             <Menu className="h-5 w-5" />
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="p-0 pt-12">
+        <SheetContent side="left" className="w-[280px] p-0">
+          <div className="flex h-16 items-center border-b border-border/60 px-4">
+            <Link
+              to="/"
+              className="flex items-center gap-3"
+              onClick={() => setMobileOpen(false)}
+            >
+              <img src="/logo.png" alt="" className="h-8 w-8 shrink-0" />
+              <span className="font-display text-base font-semibold tracking-tight">
+                Global NeoChain
+              </span>
+            </Link>
+          </div>
           <div className="overflow-y-auto px-3 py-4">
-            {/* Mobile drawer always shows the full labeled nav. Tooltips on a
-                touch device are wrong UX, and the drawer has space anyway. */}
             <SidebarNav collapsed={false} onNavigate={() => setMobileOpen(false)} />
           </div>
         </SheetContent>
       </Sheet>
-      <Logo isClickable />
-      <Separator orientation="vertical" className="hidden h-6 lg:block" />
+
+      {/* Brand block — left aligned */}
+      <Link
+        to="/"
+        className="flex min-w-0 items-center gap-3 rounded-md outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        <img
+          src="/logo.png"
+          alt=""
+          className="h-10 w-10 shrink-0 sm:h-12 sm:w-12"
+        />
+        <div className="flex min-w-0 flex-col leading-tight">
+          <span className="truncate font-display text-xl font-bold tracking-tight text-primary sm:text-2xl">
+            Global NeoChain
+          </span>
+          <span className="hidden truncate text-xs text-muted-foreground sm:block">
+            Employee Management System · Indonesian professionals
+          </span>
+        </div>
+      </Link>
+
       <div className="flex-1" />
-      <div className="flex items-center gap-1.5">
-        <NotificationsPanel />
+
+      {/* Action cluster */}
+      <div className="flex items-center gap-2">
         <Button
           variant="ghost"
           size="icon"
@@ -81,27 +116,46 @@ export function Topbar() {
           />
           <span className="sr-only">Toggle theme</span>
         </Button>
+
+        <NotificationsPanel />
+
+        {/* Profile cluster — name + role visible on sm+, avatar always */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="px-1.5">
-              <Avatar className="h-7 w-7">
-                <AvatarFallback className="text-xs">{initials}</AvatarFallback>
+            <Button
+              variant="ghost"
+              className="h-12 gap-3 px-2 sm:px-3"
+              aria-label="Account menu"
+            >
+              <div className="hidden flex-col items-end leading-tight sm:flex">
+                <span className="truncate text-sm font-semibold text-foreground">
+                  {user?.name}
+                </span>
+                <span className="truncate text-[11px] uppercase tracking-wider text-muted-foreground">
+                  {user?.role}
+                  {user?.isProjectManager ? " · PM" : ""}
+                </span>
+              </div>
+              <Avatar className="h-9 w-9 ring-2 ring-primary/40">
+                <AvatarFallback className="bg-primary/15 text-xs font-semibold text-primary">
+                  {initials}
+                </AvatarFallback>
               </Avatar>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuContent align="end" sideOffset={8} className="w-60">
             <DropdownMenuLabel className="flex flex-col gap-0.5">
               <span className="text-sm font-medium text-foreground">{user?.name}</span>
-              <span className="font-mono text-xs font-normal text-muted-foreground">{user?.email}</span>
-              <span className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-primary">
-                {user?.role}
-                {user?.isProjectManager ? " · PM" : ""}
+              <span className="font-mono text-[11px] font-normal text-muted-foreground">
+                {user?.email}
               </span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem disabled>
-              <User className="mr-2 h-4 w-4" />
-              Profile
+            <DropdownMenuItem asChild>
+              <Link to="/profile">
+                <User className="mr-2 h-4 w-4" />
+                Profile
+              </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link to="/security">
@@ -110,18 +164,16 @@ export function Topbar() {
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => dispatch(logoutThunk())}>
+            <DropdownMenuItem
+              onClick={() => dispatch(logoutThunk())}
+              className="text-destructive focus:text-destructive"
+            >
               <LogOut className="mr-2 h-4 w-4" />
               Log out
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      {/* Subtle hairline accent below header */}
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 -bottom-px h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent"
-      />
     </header>
   );
 }

@@ -58,7 +58,11 @@ export interface RegisterInput {
   name: string;
   password: string;
   phone?: string;
-  departmentId?: string;
+  /**
+   * Profile picture is mandatory at registration. Sent as multipart so the
+   * backend can persist it alongside the user record in one round-trip.
+   */
+  avatar: File;
 }
 
 export interface RegisterResponse {
@@ -72,19 +76,65 @@ export interface RegisterResponse {
  * they cannot log in until both HR and Admin sign off and the status flips
  * to ACTIVE. The mutation returns the registration shape — toast/error
  * rendering is left to the caller, which renders a richer success state.
+ *
+ * Department assignment is HR/Admin work, done after approval — there is no
+ * `departmentId` on this payload by design.
  */
 export function useRegister() {
   return useMutation({
     mutationFn: async (input: RegisterInput) => {
-      const payload: Record<string, unknown> = {
-        email: input.email,
-        name: input.name,
-        password: input.password,
-      };
-      if (input.phone) payload.phone = input.phone;
-      if (input.departmentId) payload.departmentId = input.departmentId;
-      const res = await getApi().post<RegisterResponse>("/auth/register", payload);
+      const form = new FormData();
+      form.set("email", input.email);
+      form.set("name", input.name);
+      form.set("password", input.password);
+      if (input.phone) form.set("phone", input.phone);
+      // The backend uses multer.single("file") on this route — keep the
+      // field name in sync.
+      form.set("file", input.avatar);
+      const res = await getApi().post<RegisterResponse>("/auth/register", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
       return res.data;
+    },
+  });
+}
+
+// --- Phone verification (6-digit SMS OTP) -----------------------------------
+
+/**
+ * Ask the backend to dispatch a fresh 6-digit OTP to the user's phone via the
+ * configured SmsDriver. In development the {@link ConsoleSmsDriver} prints
+ * the OTP to the backend log so devs can grab it locally — the toast hints
+ * at this so testers know where to look.
+ */
+export function useRequestPhoneVerification() {
+  return useMutation({
+    mutationFn: async () => {
+      await getApi().post("/auth/phone/request-verify");
+    },
+    onSuccess: () => {
+      toast.success(
+        "Verification code sent to your phone (check backend console for dev).",
+      );
+    },
+    onError: (err) => {
+      toast.error(errorMessage(err, "Could not send verification code."));
+    },
+  });
+}
+
+/**
+ * Submit the 6-digit OTP. On success the server flips `isPhoneVerified=true`
+ * and clears the active code so it can't be replayed; the dialog closes and
+ * the caller invalidates the profile query to refresh the badge.
+ */
+export function useConfirmPhoneVerification() {
+  return useMutation({
+    mutationFn: async ({ code }: { code: string }) => {
+      await getApi().post("/auth/phone/verify", { code });
+    },
+    onError: (err) => {
+      toast.error(errorMessage(err, "Could not verify phone."));
     },
   });
 }

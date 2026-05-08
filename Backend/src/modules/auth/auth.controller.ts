@@ -6,6 +6,7 @@ import {
   rotate,
   logout as logoutSvc,
   getMe,
+  REFRESH_TTL_MS,
 } from "./auth.service.js";
 import type { z } from "zod";
 import type { LoginBody } from "./auth.schema.js";
@@ -14,7 +15,6 @@ import { UnauthorizedError } from "../../lib/errors.js";
 type LoginInput = z.infer<typeof LoginBody>;
 
 const REFRESH_COOKIE = "refresh";
-const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function setRefreshCookie(res: Response, token: string) {
   res.cookie(REFRESH_COOKIE, token, {

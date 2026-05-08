@@ -17,6 +17,7 @@ export const PublicUser = z
     role: z.enum(ROLES),
     isProjectManager: z.boolean(),
     isVerified: z.boolean(),
+    isPhoneVerified: z.boolean(),
     mustChangePassword: z.boolean(),
     totpEnabled: z.boolean(),
     createdAt: z.string().datetime(),

@@ -17,6 +17,7 @@ export const EmergencyContact = z
 export const PublicProfile = z
   .object({
     id: z.string(),
+    employeeId: z.string().nullable().optional(),
     email: z.string().email(),
     name: z.string(),
     role: z.enum(ROLES),
@@ -28,6 +29,14 @@ export const PublicProfile = z
     departmentName: z.string().nullable().optional(),
     phone: z.string().nullable().optional(),
     avatarUrl: z.string().nullable().optional(),
+    avatarVariants: z
+      .object({
+        small: z.string().nullable(),
+        medium: z.string().nullable(),
+        large: z.string().nullable(),
+      })
+      .nullable()
+      .optional(),
     bio: z.string().nullable().optional(),
     createdAt: z.string().datetime().optional(),
   })
@@ -40,6 +49,9 @@ export const FullProfile = PublicProfile.extend({
   employmentType: z.enum(EMPLOYMENT_TYPES).nullable().optional(),
   emergencyContact: EmergencyContact.nullable().optional(),
   resumeUrl: z.string().nullable().optional(),
+  // Surfaced on FullProfile only — colleagues viewing PublicProfile don't
+  // need to see whether someone has verified their personal phone.
+  isPhoneVerified: z.boolean(),
   approvalNotes: z.string().nullable().optional(),
   hrApprovedAt: z.string().datetime().nullable().optional(),
   adminApprovedAt: z.string().datetime().nullable().optional(),
@@ -67,20 +79,41 @@ export const RejectCandidateBody = z
   })
   .openapi("RejectCandidateBody");
 
+export const ApproveHrBody = z
+  .object({
+    /**
+     * Optional department to assign the candidate to as part of HR approval.
+     * `null` clears any previously-set department; omitting the field leaves
+     * the existing departmentId untouched.
+     */
+    departmentId: objectIdString.nullable().optional(),
+  })
+  .openapi("ApproveHrBody");
+
+// NOTE: `role` and `isActive` are accepted in the schema only so the service
+// can explicitly reject them with a 403 (defense in depth). Role changes go
+// through a separate admin-only endpoint, and deactivation runs through
+// POST /employees/:id/deactivate.
 export const UpdateEmployeeBody = z
   .object({
     name: z.string().min(1).max(100).optional(),
-    phone: z.string().max(25).optional(),
+    // Indian mobile — 10 digits, leading 6/7/8/9. The service prepends `+91`
+    // before persisting. Empty string is allowed so the user can clear it.
+    phone: z
+      .string()
+      .regex(/^([6-9]\d{9})?$/, "Phone must be a 10-digit Indian mobile number")
+      .optional(),
     bio: z.string().max(500).optional(),
     dateOfBirth: z.coerce.date().optional(),
     address: z.string().max(200).optional(),
     emergencyContact: EmergencyContact.optional(),
-    role: z.enum(ROLES).optional(),
     departmentId: objectIdString.nullable().optional(),
-    isActive: z.boolean().optional(),
     jobTitle: z.string().max(100).optional(),
     hireDate: z.coerce.date().optional(),
     employmentType: z.enum(EMPLOYMENT_TYPES).optional(),
+    // Accepted only so the service rejects with 403; never persisted via PATCH.
+    role: z.enum(ROLES).optional(),
+    isActive: z.boolean().optional(),
   })
   .openapi("UpdateEmployeeBody");
 
@@ -179,7 +212,10 @@ registry.registerPath({
   path: "/employees/{id}/approve-hr",
   tags: ["employees"],
   security: sec,
-  request: { params: z.object({ id: objectIdString }) },
+  request: {
+    params: z.object({ id: objectIdString }),
+    body: { content: { "application/json": { schema: ApproveHrBody } } },
+  },
   responses: {
     200: { description: "Approved at HR stage", ...json(FullProfile) },
     403: { description: "Forbidden", ...json(ErrorRef) },

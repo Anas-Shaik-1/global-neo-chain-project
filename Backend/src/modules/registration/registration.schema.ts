@@ -1,32 +1,19 @@
 import { z } from "zod";
 import { registry } from "../../openapi/registry.js";
 import { APPROVAL_STATUSES } from "../../models/user.model.js";
-
-const objectIdString = z.string().regex(/^[0-9a-fA-F]{24}$/, "must be a 24-char hex ObjectId");
-
-/**
- * Strong password rules — these mirror the FE strongPasswordSchema so the
- * server is the source of truth for what counts as strong.
- */
-const strongPassword = z
-  .string()
-  .min(8, "Password must be at least 8 characters")
-  .max(128)
-  .regex(/[A-Z]/, "Password must include an uppercase letter")
-  .regex(/[a-z]/, "Password must include a lowercase letter")
-  .regex(/[0-9]/, "Password must include a number");
+import { strongPassword } from "../../lib/passwordValidation.js";
 
 export const RegisterBody = z
   .object({
     email: z.string().email().max(120),
     name: z.string().trim().min(1).max(100),
     password: strongPassword,
+    // Indian mobile — 10 digits, leading 6/7/8/9. The service layer prepends
+    // `+91` before persisting; the wire format is the bare subscriber number.
     phone: z
       .string()
-      .regex(/^[+\d][\d\s\-()]{6,24}$/)
-      .max(25)
+      .regex(/^[6-9]\d{9}$/, "Phone must be a 10-digit Indian mobile number")
       .optional(),
-    departmentId: objectIdString.optional(),
   })
   .openapi("RegisterBody");
 
@@ -47,11 +34,37 @@ export const RegistrationStatusResponse = z
 const json = (schema: z.ZodTypeAny) => ({ content: { "application/json": { schema } } });
 const ErrorRef = z.object({ code: z.string(), message: z.string() }).openapi("RegErrorRef");
 
+// Multipart form contract. The text fields mirror RegisterBody; `file` is
+// the (mandatory) profile picture. We document the shape with z.any() for
+// the binary so the OpenAPI generator emits a `format: binary` field.
+const RegisterMultipart = z
+  .object({
+    email: z.string().email().max(120),
+    name: z.string().trim().min(1).max(100),
+    password: strongPassword,
+    phone: z
+      .string()
+      .regex(/^[6-9]\d{9}$/, "Phone must be a 10-digit Indian mobile number")
+      .optional(),
+    file: z
+      .any()
+      .openapi({
+        type: "string",
+        format: "binary",
+        description: "Profile picture (PNG/JPEG/WebP/GIF, ≤ 2 MB). Required.",
+      }),
+  })
+  .openapi("RegisterMultipart");
+
 registry.registerPath({
   method: "post",
   path: "/auth/register",
   tags: ["auth"],
-  request: { body: { content: { "application/json": { schema: RegisterBody } } } },
+  request: {
+    body: {
+      content: { "multipart/form-data": { schema: RegisterMultipart } },
+    },
+  },
   responses: {
     201: { description: "Registered (pending HR approval)", ...json(RegisterResponse) },
     400: { description: "Validation error", ...json(ErrorRef) },

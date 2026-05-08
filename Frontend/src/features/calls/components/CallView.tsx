@@ -1,13 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Camera,
+  Circle,
   Mic,
   MicOff,
   Monitor,
   MonitorOff,
   PhoneOff,
+  Square,
   Video,
   VideoOff,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useCall, type RemoteStreamEntry } from "../CallProvider";
 import { cn } from "@/lib/utils";
 
@@ -24,7 +28,15 @@ interface RemoteVideoTileProps {
 function RemoteVideoTile({ entry }: RemoteVideoTileProps) {
   const ref = useRef<HTMLVideoElement>(null);
   useEffect(() => {
-    if (ref.current) ref.current.srcObject = entry.stream;
+    const el = ref.current;
+    if (!el) return;
+    el.srcObject = entry.stream;
+    // Clear srcObject on unmount/stream-swap so the MediaStream isn't pinned
+    // to a detached video element. Without this, ended group-call streams
+    // hang around in memory until GC eventually picks them up.
+    return () => {
+      el.srcObject = null;
+    };
   }, [entry.stream]);
   return (
     <div className="relative h-full w-full overflow-hidden rounded-lg bg-black">
@@ -63,16 +75,176 @@ export function CallView() {
   const [secs, setSecs] = useState(0);
   const startedAtRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    if (localRef.current) {
-      localRef.current.srcObject = localStream;
+  // Recording state: holds the active MediaRecorder + a buffer of chunks.
+  // When the user stops recording, we assemble a webm Blob and trigger a
+  // download. AudioContext is kept across the recording's lifetime so
+  // local + remote audio stay properly mixed.
+  const [recording, setRecording] = useState(false);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const [recSecs, setRecSecs] = useState(0);
+  const recStartedAtRef = useRef<number | null>(null);
+
+  /** Returns the "primary" video to capture for screenshot/record. */
+  const primaryRemoteStream = useCallback((): MediaStream | null => {
+    if (remoteStream) return remoteStream;
+    const first = Array.from(remoteStreams.values())[0];
+    return first?.stream ?? null;
+  }, [remoteStream, remoteStreams]);
+
+  function takeScreenshot() {
+    // Prefer the remote video (the other person/people) — that's what users
+    // typically want to capture. Fall back to the local self-view if remote
+    // hasn't arrived yet.
+    const target =
+      remoteRef.current && remoteRef.current.videoWidth > 0
+        ? remoteRef.current
+        : localRef.current;
+    if (!target || target.videoWidth === 0) {
+      toast.error("Video not ready yet — try again in a moment.");
+      return;
     }
+    const canvas = document.createElement("canvas");
+    canvas.width = target.videoWidth;
+    canvas.height = target.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(target, 0, 0);
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `gnc-call-${new Date().toISOString().replace(/[:.]/g, "-")}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Screenshot saved");
+    }, "image/png");
+  }
+
+  function startRecording() {
+    if (recording) return;
+    const remote = primaryRemoteStream();
+    if (!localStream && !remote) {
+      toast.error("Nothing to record yet.");
+      return;
+    }
+
+    // Build a combined stream:
+    //   • video: prefer remote (the conversation), fall back to local
+    //   • audio: mix local mic + any remote audio via AudioContext so both
+    //     sides of the conversation land on the recorded track.
+    const audioCtx = new AudioContext();
+    audioCtxRef.current = audioCtx;
+    const dest = audioCtx.createMediaStreamDestination();
+
+    if (localStream && localStream.getAudioTracks().length > 0) {
+      audioCtx.createMediaStreamSource(localStream).connect(dest);
+    }
+    if (remote && remote.getAudioTracks().length > 0) {
+      audioCtx.createMediaStreamSource(remote).connect(dest);
+    }
+    for (const entry of remoteStreams.values()) {
+      if (entry.stream === remote) continue;
+      if (entry.stream.getAudioTracks().length > 0) {
+        audioCtx.createMediaStreamSource(entry.stream).connect(dest);
+      }
+    }
+
+    const videoSource = remote ?? localStream;
+    const combined = new MediaStream();
+    if (videoSource) {
+      for (const t of videoSource.getVideoTracks()) combined.addTrack(t);
+    }
+    for (const t of dest.stream.getAudioTracks()) combined.addTrack(t);
+
+    let mr: MediaRecorder;
+    try {
+      mr = new MediaRecorder(combined, { mimeType: "video/webm;codecs=vp8,opus" });
+    } catch {
+      try {
+        mr = new MediaRecorder(combined);
+      } catch {
+        toast.error("Recording isn't supported in this browser.");
+        audioCtx.close();
+        audioCtxRef.current = null;
+        return;
+      }
+    }
+
+    recordedChunksRef.current = [];
+    mr.ondataavailable = (e) => {
+      if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+    };
+    mr.onstop = () => {
+      const blob = new Blob(recordedChunksRef.current, { type: "video/webm" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `gnc-recording-${new Date().toISOString().replace(/[:.]/g, "-")}.webm`;
+      a.click();
+      URL.revokeObjectURL(url);
+      recordedChunksRef.current = [];
+      audioCtxRef.current?.close().catch(() => {});
+      audioCtxRef.current = null;
+      toast.success("Recording saved");
+    };
+
+    mr.start(1000); // emit a chunk per second so we don't lose state on crash
+    recorderRef.current = mr;
+    recStartedAtRef.current = Date.now();
+    setRecSecs(0);
+    setRecording(true);
+    toast.info("Recording started");
+  }
+
+  function stopRecording() {
+    const mr = recorderRef.current;
+    if (!mr) return;
+    if (mr.state !== "inactive") mr.stop();
+    recorderRef.current = null;
+    recStartedAtRef.current = null;
+    setRecording(false);
+  }
+
+  // Recording timer — drives the small "● 00:42" pill in the call header.
+  useEffect(() => {
+    if (!recording) return;
+    const id = window.setInterval(() => {
+      if (recStartedAtRef.current === null) return;
+      setRecSecs(Math.floor((Date.now() - recStartedAtRef.current) / 1000));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [recording]);
+
+  // If the call ends mid-recording, force-stop so the user still gets the
+  // partial file on disk.
+  useEffect(() => {
+    if (state === "active" || state === "outgoing-pending") return;
+    if (recorderRef.current?.state === "recording") {
+      recorderRef.current.stop();
+      recorderRef.current = null;
+    }
+    setRecording(false);
+  }, [state]);
+
+  useEffect(() => {
+    const el = localRef.current;
+    if (!el) return;
+    el.srcObject = localStream;
+    return () => {
+      el.srcObject = null;
+    };
   }, [localStream]);
 
   useEffect(() => {
-    if (remoteRef.current) {
-      remoteRef.current.srcObject = remoteStream;
-    }
+    const el = remoteRef.current;
+    if (!el) return;
+    el.srcObject = remoteStream;
+    return () => {
+      el.srcObject = null;
+    };
   }, [remoteStream]);
 
   useEffect(() => {
@@ -120,9 +292,23 @@ export function CallView() {
           </span>
           <span className="font-display text-lg font-semibold">{headerName}</span>
         </div>
-        <span className="rounded-full bg-white/10 px-3 py-1 font-mono text-xs">
-          {status}
-        </span>
+        <div className="flex items-center gap-2">
+          {recording && (
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full bg-red-600/20 px-2.5 py-1 font-mono text-xs text-red-300"
+              title="Recording in progress"
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500/70" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+              </span>
+              REC {formatDuration(recSecs)}
+            </span>
+          )}
+          <span className="rounded-full bg-white/10 px-3 py-1 font-mono text-xs">
+            {status}
+          </span>
+        </div>
       </div>
 
       {screenSharing && (
@@ -288,11 +474,41 @@ export function CallView() {
             <Monitor className="h-5 w-5" />
           )}
         </button>
+
+        <button
+          type="button"
+          onClick={takeScreenshot}
+          aria-label="Take screenshot"
+          title="Take screenshot"
+          className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+        >
+          <Camera className="h-5 w-5" />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => (recording ? stopRecording() : startRecording())}
+          aria-label={recording ? "Stop recording" : "Record meeting"}
+          title={recording ? "Stop recording" : "Record meeting"}
+          className={cn(
+            "flex h-12 w-12 items-center justify-center rounded-full transition-colors",
+            recording
+              ? "bg-red-500 text-white hover:bg-red-500/90"
+              : "bg-white/10 text-white hover:bg-white/20",
+          )}
+        >
+          {recording ? (
+            <Square className="h-4 w-4 fill-current" />
+          ) : (
+            <Circle className="h-5 w-5" />
+          )}
+        </button>
+
         <button
           type="button"
           onClick={end}
           aria-label="End call"
-          className="flex h-12 w-16 items-center justify-center rounded-full bg-red-600 text-white transition-colors hover:bg-red-700"
+          className="ml-2 flex h-12 w-16 items-center justify-center rounded-full bg-red-600 text-white transition-colors hover:bg-red-700"
         >
           <PhoneOff className="h-5 w-5" />
         </button>

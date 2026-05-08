@@ -7,11 +7,18 @@ import { configureStore } from "@reduxjs/toolkit";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { authSlice, sessionEstablished } from "@/features/auth/authSlice";
 import { uiSlice } from "@/features/ui/uiSlice";
+import { presenceSlice } from "@/features/chat/presenceSlice";
 import { setupApiClient, getApi } from "@/api/axios";
 import { DepartmentsPage } from "./DepartmentsPage";
 
 function build() {
-  const store = configureStore({ reducer: { auth: authSlice.reducer, ui: uiSlice.reducer } });
+  const store = configureStore({
+    reducer: {
+      auth: authSlice.reducer,
+      ui: uiSlice.reducer,
+      presence: presenceSlice.reducer,
+    },
+  });
   store.dispatch(sessionEstablished({
     accessToken: "t",
     user: { id: "admin1", email: "admin@b.com", name: "Admin", role: "ADMIN", isProjectManager: false, isVerified: true },

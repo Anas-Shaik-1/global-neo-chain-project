@@ -1,4 +1,9 @@
-import axios, { AxiosError, type AxiosInstance, type InternalAxiosRequestConfig } from "axios";
+import axios, {
+  AxiosError,
+  AxiosHeaders,
+  type AxiosInstance,
+  type InternalAxiosRequestConfig,
+} from "axios";
 import type { AppStore } from "@/app/store";
 import { accessTokenRefreshed, sessionCleared } from "@/features/auth/authSlice";
 
@@ -29,13 +34,22 @@ export function createApiClient({ store, baseURL }: CreateApiClientOptions): Axi
     async (error: AxiosError) => {
       const original = error.config as RetriedConfig | undefined;
       const status = error.response?.status;
-      const url = original?.url ?? "";
 
-      if (status !== 401 || !original || original.__retried || url.includes("/auth/refresh")) {
+      if (status !== 401 || !original || original.__retried) {
         throw error;
       }
 
-      original.__retried = true;
+      // Resolve the request URL against the base URL and check the pathname so
+      // benign URLs like `/users?next=/auth/refresh` don't trip this guard.
+      let pathname = "";
+      try {
+        pathname = new URL(original.url ?? "", baseURL).pathname;
+      } catch {
+        pathname = original.url ?? "";
+      }
+      if (pathname.endsWith("/auth/refresh")) {
+        throw error;
+      }
 
       if (!pendingRefresh) {
         pendingRefresh = (async () => {
@@ -55,6 +69,16 @@ export function createApiClient({ store, baseURL }: CreateApiClientOptions): Axi
       const newToken = await pendingRefresh;
       if (!newToken) throw error;
 
+      // Only mark the request as retried after a successful refresh, so that
+      // concurrent 401s don't permanently lock themselves out of a future
+      // re-refresh attempt if the in-flight refresh failed.
+      original.__retried = true;
+      // Some raw configs (e.g. ones constructed from interceptors or tests)
+      // arrive without an `AxiosHeaders` instance. Ensure we always have one
+      // before calling `.set(...)`.
+      if (!original.headers) {
+        original.headers = new AxiosHeaders();
+      }
       original.headers.set("Authorization", `Bearer ${newToken}`);
       return api(original);
     },

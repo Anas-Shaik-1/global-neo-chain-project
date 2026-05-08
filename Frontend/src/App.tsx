@@ -32,7 +32,17 @@ import { CallsHistoryPage } from "@/features/calls/pages/CallsHistoryPage";
 import { CallProvider } from "@/features/calls/CallProvider";
 import { IncomingCallDialog } from "@/features/calls/components/IncomingCallDialog";
 import { CallView } from "@/features/calls/components/CallView";
+import { BugsPage } from "@/features/bugs/pages/BugsPage";
+import { FeedbackPage } from "@/features/feedback/pages/FeedbackPage";
+import { CalendarPage } from "@/features/calendar/pages/CalendarPage";
 import { RoleGate } from "@/features/auth/RoleGate";
+import { ErrorBoundary } from "@/components/common/ErrorBoundary";
+import { ScrollToHash } from "@/components/common/ScrollToHash";
+import { LandingPage } from "@/features/landing/LandingPage";
+import { TeamPage } from "@/features/landing/pages/TeamPage";
+import { ServicesPage } from "@/features/landing/pages/ServicesPage";
+import { IndustriesPage } from "@/features/landing/pages/IndustriesPage";
+import { AboutPage } from "@/features/landing/pages/AboutPage";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 setupApiClient(store, API_BASE);
@@ -40,6 +50,13 @@ setupApiClient(store, API_BASE);
 function Routed() {
   return (
     <Routes>
+      {/* Public marketing landing — bounces logged-in users to /dashboard
+          internally so the URL stays stable for shareable links. */}
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/team" element={<TeamPage />} />
+      <Route path="/services" element={<ServicesPage />} />
+      <Route path="/industries" element={<IndustriesPage />} />
+      <Route path="/about" element={<AboutPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/forgot-password" element={<RequestResetPage />} />
@@ -47,7 +64,6 @@ function Routed() {
       <Route path="/verify-email" element={<VerifyEmailPage />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/change-password" element={<ChangePasswordPage />} />
           <Route path="/security" element={<SecurityPage />} />
@@ -79,6 +95,9 @@ function Routed() {
           <Route path="/attendance" element={<AttendancePage />} />
           <Route path="/expenses" element={<ExpensesPage />} />
           <Route path="/payroll" element={<PayrollPage />} />
+          <Route path="/bugs" element={<BugsPage />} />
+          <Route path="/feedback" element={<FeedbackPage />} />
+          <Route path="/calendar" element={<CalendarPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
@@ -91,19 +110,22 @@ export default function App() {
     document.title = "Global NeoChain — Employee Management";
   }, []);
   return (
-    <Provider store={store}>
-      <ThemeProvider>
-        <QueryClientProvider client={queryClient}>
-          <Toaster richColors position="top-right" theme="dark" closeButton />
-          <BrowserRouter>
-            <CallProvider>
-              <Routed />
-              <IncomingCallDialog />
-              <CallView />
-            </CallProvider>
-          </BrowserRouter>
-        </QueryClientProvider>
-      </ThemeProvider>
-    </Provider>
+    <ErrorBoundary>
+      <Provider store={store}>
+        <ThemeProvider>
+          <QueryClientProvider client={queryClient}>
+            <Toaster richColors position="top-right" theme="dark" closeButton />
+            <BrowserRouter>
+              <ScrollToHash />
+              <CallProvider>
+                <Routed />
+                <IncomingCallDialog />
+                <CallView />
+              </CallProvider>
+            </BrowserRouter>
+          </QueryClientProvider>
+        </ThemeProvider>
+      </Provider>
+    </ErrorBoundary>
   );
 }

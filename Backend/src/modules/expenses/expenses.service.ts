@@ -14,8 +14,34 @@ import {
   ValidationError,
 } from "../../lib/errors.js";
 import { createFileStorage, type FileInput } from "../../lib/storage.js";
-import { toInrCents, formatCurrency } from "../../lib/currency.js";
+import { toInrCents, formatCurrency, getInrRateAt } from "../../lib/currency.js";
 import { logger } from "../../lib/logger.js";
+
+/**
+ * Asserts an integer-money value (paise/cents) is a non-negative integer.
+ * Stops fractional or negative writes from polluting the DB at the service
+ * boundary so reads don't have to defensively round.
+ */
+function assertIntegerMoney(value: number, label: string): void {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new ValidationError(
+      `${label} must be a non-negative integer in minor units (got ${value})`,
+    );
+  }
+}
+
+/**
+ * Resolve the INR-paise equivalent of a stored expense amount, preferring the
+ * FX-rate snapshot taken at write time over today's stub rate. Falls back to
+ * `getInrRateAt` for older rows that pre-date the snapshot.
+ */
+function resolveInrCents(doc: ExpenseDoc): number {
+  const snap = (doc as unknown as { fxRateInrAtCreate?: number }).fxRateInrAtCreate;
+  if (typeof snap === "number" && Number.isFinite(snap) && snap > 0) {
+    return Math.round(doc.amount * snap);
+  }
+  return Math.round(doc.amount * getInrRateAt(doc.currency));
+}
 
 const storage = createFileStorage();
 
@@ -72,7 +98,10 @@ export function denormalizeExpense(
     userName: userNames.get(e.userId.toString()) ?? null,
     amount: e.amount,
     currency: e.currency,
-    amountInr: toInrCents(e.amount, e.currency),
+    // Prefer the FX rate snapshotted at write time (`fxRateInrAtCreate`) so
+    // historical rows don't silently re-rate when prod swaps in a real FX
+    // provider. Fallback path uses today's stub rate for legacy rows.
+    amountInr: resolveInrCents(e),
     category: e.category as ExpenseCategory,
     description: e.description,
     incurredOn: e.incurredOn,
@@ -126,8 +155,43 @@ export interface PagedExpenses {
   summary: ExpensesSummary;
 }
 
-function summarize(items: ExpenseResponseShape[]): ExpensesSummary {
-  const totalInrCents = items.reduce((acc, e) => acc + e.amountInr, 0);
+/**
+ * Total INR-paise across the *full* filtered set (not just the current page).
+ * Groups by (currency, fxRateInrAtCreate) at the DB layer so rows with a
+ * write-time FX snapshot use that exact rate, while older rows without a
+ * snapshot fall back to today's stub rate via `toInrCents`. Mixed-currency
+ * rows still produce a single coherent total.
+ */
+async function summarizeByFilter(
+  filter: Record<string, unknown>,
+): Promise<ExpensesSummary> {
+  const agg = await Expense.aggregate<{
+    _id: { currency: string; fx: number | null };
+    total: number;
+  }>([
+    { $match: filter },
+    {
+      $group: {
+        _id: {
+          currency: "$currency",
+          fx: { $ifNull: ["$fxRateInrAtCreate", null] },
+        },
+        total: { $sum: "$amount" },
+      },
+    },
+  ]);
+  let totalInrCents = 0;
+  for (const row of agg) {
+    if (
+      typeof row._id.fx === "number" &&
+      Number.isFinite(row._id.fx) &&
+      row._id.fx > 0
+    ) {
+      totalInrCents += Math.round(row.total * row._id.fx);
+    } else {
+      totalInrCents += toInrCents(row.total, row._id.currency);
+    }
+  }
   return { totalInrCents };
 }
 
@@ -139,15 +203,16 @@ export async function listMyExpenses(
   const limit = Math.min(100, Math.max(1, input.limit ?? 20));
   const filter: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
   if (input.status) filter.status = input.status;
-  const [docs, total] = await Promise.all([
+  const [docs, total, summary] = await Promise.all([
     Expense.find(filter)
       .sort({ incurredOn: -1, createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit),
     Expense.countDocuments(filter),
+    summarizeByFilter(filter),
   ]);
   const items = await denormalizeMany(docs);
-  return { items, total, page, limit, summary: summarize(items) };
+  return { items, total, page, limit, summary };
 }
 
 export async function listAll(input: ListAllInput): Promise<PagedExpenses> {
@@ -156,15 +221,16 @@ export async function listAll(input: ListAllInput): Promise<PagedExpenses> {
   const filter: Record<string, unknown> = {};
   if (input.status) filter.status = input.status;
   if (input.userId) filter.userId = new Types.ObjectId(input.userId);
-  const [docs, total] = await Promise.all([
+  const [docs, total, summary] = await Promise.all([
     Expense.find(filter)
       .sort({ status: 1, incurredOn: -1, createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit),
     Expense.countDocuments(filter),
+    summarizeByFilter(filter),
   ]);
   const items = await denormalizeMany(docs);
-  return { items, total, page, limit, summary: summarize(items) };
+  return { items, total, page, limit, summary };
 }
 
 export async function getExpense(
@@ -200,13 +266,21 @@ export async function createExpense(
   userId: string,
   input: CreateExpenseInput,
 ): Promise<ExpenseResponseShape> {
-  if (input.amount < 0) {
-    throw new ValidationError("amount must be >= 0");
-  }
+  // Integer-money guard: reject fractional cents at the service boundary.
+  assertIntegerMoney(input.amount, "amount");
+  const currency = input.currency ?? "INR";
+  // Snapshot the FX rate at write time so historical aggregations don't
+  // silently re-rate when prod swaps the stub for a real FX provider.
+  // STUB: `getInrRateAt` returns the hard-coded rate today; see lib/currency.ts.
+  const fxRateInrAtCreate = getInrRateAt(currency, new Date());
+  // TODO(fx-snapshot-schema): the model agent owns the schema for
+  // `fxRateInrAtCreate`. Until the schema lands as non-strict, mongoose's
+  // default `strict: true` will silently drop unknown fields. Use
+  // `created.set(..., { strict: false })` after create as a safety net.
   const created = await Expense.create({
     userId: new Types.ObjectId(userId),
     amount: input.amount,
-    currency: input.currency ?? "INR",
+    currency,
     category: input.category,
     description: input.description,
     incurredOn: input.incurredOn,
@@ -215,7 +289,17 @@ export async function createExpense(
     decisionById: null,
     decisionNote: null,
     decidedAt: null,
+    fxRateInrAtCreate,
   });
+  // If the schema is strict and dropped the field on create, force-set it
+  // un-strictly so reads see the snapshot. Idempotent if it was already set.
+  if (
+    (created as unknown as { fxRateInrAtCreate?: number }).fxRateInrAtCreate ===
+    undefined
+  ) {
+    created.set("fxRateInrAtCreate", fxRateInrAtCreate, { strict: false });
+    await created.save();
+  }
   const result = await denormalizeOne(created);
   // Fire-and-forget admin notifications. Failures here must never block the
   // user-visible "expense submitted" success path.
@@ -290,6 +374,13 @@ export async function setReceipt(
   const doc = await Expense.findById(expenseId).select("+receiptKey");
   if (!doc) throw new NotFoundError("Expense");
   ensureSelfOrElevated(doc.userId, requester);
+  // Receipt is locked once a decision has been made — approved/rejected
+  // expenses must not have their evidence swapped out after the fact.
+  if (doc.status !== "PENDING") {
+    throw new ConflictError(
+      `Cannot modify receipt: expense is ${doc.status.toLowerCase()}`,
+    );
+  }
   const saved = await storage.save("receipt", doc.userId.toString(), file);
   if (doc.receiptKey) {
     try {
@@ -311,6 +402,13 @@ export async function clearReceipt(
   const doc = await Expense.findById(expenseId).select("+receiptKey");
   if (!doc) throw new NotFoundError("Expense");
   ensureSelfOrElevated(doc.userId, requester);
+  // Receipt is locked once a decision has been made — approved/rejected
+  // expenses must not have their evidence removed after the fact.
+  if (doc.status !== "PENDING") {
+    throw new ConflictError(
+      `Cannot modify receipt: expense is ${doc.status.toLowerCase()}`,
+    );
+  }
   if (doc.receiptKey) {
     try {
       await storage.delete(doc.receiptKey);

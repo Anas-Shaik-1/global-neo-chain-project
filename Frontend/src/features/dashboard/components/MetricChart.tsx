@@ -14,14 +14,18 @@ interface Props {
   /** Stroke + gradient color; expects HSL like `hsl(195 90% 55%)`. Defaults to brand cyan. */
   color?: string;
   formatValue?: (v: number) => string;
-  height?: number;
+  /** Pixel height OR a percentage string (e.g. `"100%"`). Defaults to
+   *  `"100%"` so charts in the resizable dashboard grid stretch with their
+   *  cell; pass a number (e.g. 200) when the chart sits inside a
+   *  non-flexed container that has no explicit height of its own. */
+  height?: number | `${number}%`;
 }
 
 export function MetricChart({
   data,
   color = "hsl(195 90% 55%)",
   formatValue = (v) => v.toString(),
-  height = 200,
+  height = "100%",
 }: Props) {
   // useId so multiple MetricCharts on one page don't collide on the gradient id.
   const gradientId = `metric-chart-fill-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;

@@ -3,11 +3,16 @@ import MockAdapter from "axios-mock-adapter";
 import { configureStore } from "@reduxjs/toolkit";
 import { authSlice, sessionEstablished, sessionCleared } from "@/features/auth/authSlice";
 import { uiSlice } from "@/features/ui/uiSlice";
+import { presenceSlice } from "@/features/chat/presenceSlice";
 import { createApiClient } from "./axios";
 
 function buildStore() {
   return configureStore({
-    reducer: { auth: authSlice.reducer, ui: uiSlice.reducer },
+    reducer: {
+      auth: authSlice.reducer,
+      ui: uiSlice.reducer,
+      presence: presenceSlice.reducer,
+    },
   });
 }
 

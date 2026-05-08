@@ -11,6 +11,7 @@ import type {
   TotpDisableBody,
   Login2FABody,
   VerifyEmailBody,
+  VerifyPhoneBody,
 } from "./authExtensions.schema.js";
 
 function requireUser(req: Request) {
@@ -113,6 +114,27 @@ export async function postVerifyEmailConfirm(req: Request, res: Response, next: 
     const body = req.validated as z.infer<typeof VerifyEmailBody>;
     const { email } = await svc.confirmEmailVerification(body.token);
     res.json({ email });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function postPhoneRequestVerify(req: Request, res: Response, next: NextFunction) {
+  try {
+    const me = requireUser(req);
+    await svc.requestPhoneVerification(me.id);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function postPhoneVerify(req: Request, res: Response, next: NextFunction) {
+  try {
+    const me = requireUser(req);
+    const body = req.validated as z.infer<typeof VerifyPhoneBody>;
+    await svc.confirmPhoneVerification(me.id, body.code);
+    res.status(204).send();
   } catch (err) {
     next(err);
   }

@@ -4,10 +4,17 @@ import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
 import { authSlice, sessionEstablished } from "./authSlice";
 import { uiSlice } from "@/features/ui/uiSlice";
+import { presenceSlice } from "@/features/chat/presenceSlice";
 import { RoleGate } from "./RoleGate";
 
 function buildStore() {
-  return configureStore({ reducer: { auth: authSlice.reducer, ui: uiSlice.reducer } });
+  return configureStore({
+    reducer: {
+      auth: authSlice.reducer,
+      ui: uiSlice.reducer,
+      presence: presenceSlice.reducer,
+    },
+  });
 }
 
 const sampleUser = (

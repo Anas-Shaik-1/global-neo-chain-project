@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node -e \"require('fs').cpSync('src/assets', 'dist/assets', { recursive: true })\"",
     "start": "node dist/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -15,6 +15,7 @@
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^7.3.4",
     "bcrypt": "^5.1.1",
+    "cloudinary": "^2.10.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.0.0",
@@ -24,6 +25,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.8.0",
     "multer": "^2.1.1",
+    "nodemailer": "^8.0.7",
     "otplib": "^13.4.0",
     "pdfkit": "^0.18.0",
     "pino": "^9.5.0",
@@ -48,6 +50,7 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/multer": "^2.1.0",
     "@types/node": "^22.9.0",
+    "@types/nodemailer": "^8.0.0",
     "@types/pdfkit": "^0.17.6",
     "@types/qrcode": "^1.5.6",
     "@types/supertest": "^6.0.2",

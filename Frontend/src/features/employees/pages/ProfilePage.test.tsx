@@ -7,11 +7,18 @@ import { configureStore } from "@reduxjs/toolkit";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { authSlice, sessionEstablished } from "@/features/auth/authSlice";
 import { uiSlice } from "@/features/ui/uiSlice";
+import { presenceSlice } from "@/features/chat/presenceSlice";
 import { setupApiClient, getApi } from "@/api/axios";
 import { ProfilePage } from "./ProfilePage";
 
 function build() {
-  const store = configureStore({ reducer: { auth: authSlice.reducer, ui: uiSlice.reducer } });
+  const store = configureStore({
+    reducer: {
+      auth: authSlice.reducer,
+      ui: uiSlice.reducer,
+      presence: presenceSlice.reducer,
+    },
+  });
   store.dispatch(sessionEstablished({
     accessToken: "t",
     user: { id: "u1", email: "u@b.com", name: "User", role: "EMPLOYEE", isProjectManager: false, isVerified: true },
@@ -29,9 +36,12 @@ beforeEach(() => {
   mock = new MockAdapter(getApi());
 });
 
+// Phone is stored backend-side as `+91XXXXXXXXXX`; the ProfilePage strips
+// the country-code prefix and displays just the 10-digit subscriber portion
+// in the edit input.
 const fullProfile = {
   id: "u1", email: "u@b.com", name: "User", role: "EMPLOYEE", isActive: true,
-  jobTitle: "Engineer", phone: "555-555-1234", bio: "hello",
+  jobTitle: "Engineer", phone: "+919876543210", bio: "hello",
   createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
 };
 
@@ -46,7 +56,7 @@ describe("ProfilePage", () => {
       </Provider>,
     );
     expect(await screen.findByDisplayValue("User")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("555-555-1234")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("9876543210")).toBeInTheDocument();
     expect(screen.getByDisplayValue("hello")).toBeInTheDocument();
   });
 

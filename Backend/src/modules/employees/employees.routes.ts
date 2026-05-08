@@ -9,6 +9,7 @@ import {
   CreatePositionBody,
   UpdatePositionBody,
   RejectCandidateBody,
+  ApproveHrBody,
 } from "./employees.schema.js";
 
 export const employeesRouter = Router();
@@ -23,7 +24,12 @@ employeesRouter.get("/", ctl.getList);
 // Approval workflow. Routes appear before `/:id` to avoid `/candidates` being
 // captured as an ObjectId param.
 employeesRouter.get("/candidates", requireRole("HR", "ADMIN"), ctl.getCandidates);
-employeesRouter.post("/:id/approve-hr", requireRole("HR", "ADMIN"), ctl.postApproveHr);
+employeesRouter.post(
+  "/:id/approve-hr",
+  requireRole("HR", "ADMIN"),
+  validate(ApproveHrBody),
+  ctl.postApproveHr,
+);
 employeesRouter.post("/:id/approve-admin", requireRole("ADMIN"), ctl.postApproveAdmin);
 employeesRouter.post(
   "/:id/reject",

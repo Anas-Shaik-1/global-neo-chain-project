@@ -139,11 +139,15 @@ export async function adminStats(): Promise<AdminStats> {
   let totalPayrollNet = 0;
   if (latestPayslip) {
     payrollMonth = latestPayslip.month;
-    const agg = await Payslip.aggregate<{ _id: null; total: number }>([
+    // Group by currency before summing — payrolls in different currencies
+    // can't be added as raw numbers; convert each bucket to INR paise first.
+    const agg = await Payslip.aggregate<{ _id: string; total: number }>([
       { $match: { month: latestPayslip.month } },
-      { $group: { _id: null, total: { $sum: "$netAmount" } } },
+      { $group: { _id: "$currency", total: { $sum: "$netAmount" } } },
     ]);
-    totalPayrollNet = agg[0]?.total ?? 0;
+    for (const row of agg) {
+      totalPayrollNet += toInrCents(row.total, row._id);
+    }
   }
 
   const recentJoiners: RecentJoiner[] = recentJoinerDocs.map((u) => ({
@@ -181,16 +185,21 @@ export async function hrStats(): Promise<HrStats> {
     User.countDocuments({ isActive: true }),
     User.countDocuments({ isActive: false }),
     Expense.countDocuments({ status: "PENDING" }),
-    Expense.aggregate<{ _id: null; total: number }>([
+    // Group by currency before summing — pending expenses can be in mixed
+    // currencies; raw $sum across currencies produces a meaningless number.
+    Expense.aggregate<{ _id: string; total: number }>([
       { $match: { status: "PENDING" } },
-      { $group: { _id: null, total: { $sum: "$amount" } } },
+      { $group: { _id: "$currency", total: { $sum: "$amount" } } },
     ]),
     Attendance.countDocuments({ date: today }),
     Attendance.countDocuments({ date: today, clockOut: null }),
     Department.find({}).select("_id name").lean(),
   ]);
 
-  const pendingExpensesAmount = pendingAgg[0]?.total ?? 0;
+  let pendingExpensesAmount = 0;
+  for (const row of pendingAgg) {
+    pendingExpensesAmount += toInrCents(row.total, row._id);
+  }
 
   // Build department breakdown by counting users per department for departments
   // present in the system. Top 5 by count desc.
@@ -249,7 +258,9 @@ export async function employeeStats(userId: string): Promise<EmployeeStats> {
       updatedAt: { $gte: monthStart, $lt: monthEnd },
     }),
     Expense.countDocuments({ userId: oid, status: "PENDING" }),
-    Expense.aggregate<{ _id: null; total: number }>([
+    // Group by currency before summing so mixed-currency expenses convert
+    // through INR rather than being summed as raw amounts.
+    Expense.aggregate<{ _id: string; total: number }>([
       {
         $match: {
           userId: oid,
@@ -257,7 +268,7 @@ export async function employeeStats(userId: string): Promise<EmployeeStats> {
           decidedAt: { $gte: monthStart, $lt: monthEnd },
         },
       },
-      { $group: { _id: null, total: { $sum: "$amount" } } },
+      { $group: { _id: "$currency", total: { $sum: "$amount" } } },
     ]),
     Payslip.findOne({ userId: oid }).sort({ month: -1, createdAt: -1 }).lean(),
   ]);
@@ -280,6 +291,11 @@ export async function employeeStats(userId: string): Promise<EmployeeStats> {
       }
     : null;
 
+  let myApprovedExpensesThisMonth = 0;
+  for (const row of approvedAgg) {
+    myApprovedExpensesThisMonth += toInrCents(row.total, row._id);
+  }
+
   return {
     todayAttendance: todayDoc ? attendanceToShape(todayDoc) : null,
     monthHoursMinutes,
@@ -287,7 +303,7 @@ export async function employeeStats(userId: string): Promise<EmployeeStats> {
     myOpenTasks,
     myDoneTasksThisMonth,
     myPendingExpenses,
-    myApprovedExpensesThisMonth: approvedAgg[0]?.total ?? 0,
+    myApprovedExpensesThisMonth,
     latestPayslip,
     unreadMessages: 0,
   };

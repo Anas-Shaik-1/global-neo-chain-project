@@ -3,7 +3,7 @@ import { Schema, model, type InferSchemaType, type Model, Types } from "mongoose
 export const TASK_STATUSES = ["TODO", "IN_PROGRESS", "DONE"] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
-export const TASK_PRIORITIES = ["LOW", "MEDIUM", "HIGH"] as const;
+export const TASK_PRIORITIES = ["LOW", "MEDIUM", "HIGH", "ENHANCEMENT"] as const;
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];
 
 const taskSchema = new Schema(

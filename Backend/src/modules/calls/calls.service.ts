@@ -232,6 +232,7 @@ export async function endCall(
     doc.status === "ENDED" ||
     doc.status === "REJECTED" ||
     doc.status === "MISSED";
+  let transitionedToMissed = false;
   if (!alreadyEnded) {
     doc.endedAt = new Date();
     doc.endReason = reason;
@@ -242,8 +243,10 @@ export async function endCall(
         doc.status = "REJECTED";
       } else if (reason === "TIMEOUT") {
         doc.status = "MISSED";
+        transitionedToMissed = true;
       } else {
         doc.status = "MISSED";
+        transitionedToMissed = true;
       }
     } else if (doc.status === "ACTIVE") {
       doc.status = "ENDED";
@@ -251,6 +254,31 @@ export async function endCall(
     await doc.save();
   }
   const users = await buildUserMap(doc.participantIds);
+
+  // Notify the non-initiators who never picked up. Only fire on the
+  // INVITED → MISSED transition; REJECTED is the callee's own action and
+  // ENDED happened after both parties were on the call.
+  if (transitionedToMissed) {
+    const initiatorId = doc.initiatorId.toString();
+    const callerName = users.get(initiatorId)?.name ?? "Someone";
+    const recipients = doc.participantIds
+      .map((id) => id.toString())
+      .filter((id) => id !== initiatorId);
+    void (async () => {
+      const { notifyMany } = await import(
+        "../notifications/notifications.service.js"
+      );
+      await notifyMany(recipients, {
+        kind: "CALL_MISSED",
+        title: `Missed call from ${callerName}`,
+        link: "/calls",
+      });
+    })().catch(() => {
+      // Best-effort: dynamic import path. Failures are visible in the realtime
+      // logs already; we don't want a notify failure to break the call flow.
+    });
+  }
+
   return denormalizeCall(doc, users);
 }
 

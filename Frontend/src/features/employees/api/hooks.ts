@@ -29,6 +29,8 @@ export const departmentKeys = {
 
 export interface PublicProfile {
   id: string;
+  /** EMP-YYYY-NNNN — assigned at admin approval. Null for pre-active users. */
+  employeeId?: string | null;
   email: string;
   name: string;
   role: "ADMIN" | "HR" | "EMPLOYEE";
@@ -40,6 +42,15 @@ export interface PublicProfile {
   departmentName?: string | null;
   phone?: string | null;
   avatarUrl?: string | null;
+  /**
+   * Cloudinary-driven responsive avatar URLs. Pick the size that fits the
+   * surface; falls back to `avatarUrl` if null (local-storage uploads).
+   */
+  avatarVariants?: {
+    small: string | null;
+    medium: string | null;
+    large: string | null;
+  } | null;
   bio?: string | null;
   createdAt?: string;
 }
@@ -51,6 +62,9 @@ export interface FullProfile extends PublicProfile {
   employmentType?: "FULL_TIME" | "PART_TIME" | "CONTRACT" | "INTERN" | null;
   emergencyContact?: { name: string; phone: string; relationship: string } | null;
   resumeUrl?: string | null;
+  // Phone-verification status. Optional on the type so tests with older
+  // fixtures continue to compile, but the live backend always returns it.
+  isPhoneVerified?: boolean;
   approvalNotes?: string | null;
   hrApprovedAt?: string | null;
   adminApprovedAt?: string | null;
@@ -148,11 +162,18 @@ export function useCandidates(params: { stage: "hr" | "admin" }) {
   });
 }
 
+export interface ApproveHrInput {
+  /** Optional department to place the candidate into at approval time. */
+  departmentId?: string | null;
+}
+
 export function useApproveHr(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async () => {
-      const res = await api().post(`/employees/${id}/approve-hr`);
+    mutationFn: async (input: ApproveHrInput = {}) => {
+      const body: Record<string, unknown> = {};
+      if (input.departmentId !== undefined) body.departmentId = input.departmentId;
+      const res = await api().post(`/employees/${id}/approve-hr`, body);
       return res.data as FullProfile;
     },
     onSuccess: () => {

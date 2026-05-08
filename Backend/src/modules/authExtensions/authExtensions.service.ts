@@ -8,6 +8,7 @@ import { EmailVerificationToken } from "../../models/emailVerificationToken.mode
 import { config } from "../../config/index.js";
 import { logger } from "../../lib/logger.js";
 import { getMailDriver } from "../../lib/mail.js";
+import { getSmsDriver } from "../../lib/sms.js";
 import {
   loginCheckCredentials,
   issueTokensFor,
@@ -22,21 +23,53 @@ import {
 
 const RESET_TTL_MS = 60 * 60 * 1000; // 1 hour
 const EMAIL_VERIFY_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const PHONE_OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const PHONE_OTP_MAX_ATTEMPTS = 5;
 const BCRYPT_ROUNDS = 12;
 const ISSUER = "Global NeoChain";
-// Allow 1 step (~30s) of drift either side to be friendly to slightly-skewed clocks.
-const TOTP_TOLERANCE: [number, number] = [1, 1];
+// otplib's `epochTolerance` is in SECONDS, not steps — allow ±30s of clock
+// drift either side to be friendly to slightly-skewed authenticator clocks.
+const TOTP_TOLERANCE: [number, number] = [30, 30];
+
+// In-memory replay-protection map: userId → last accepted TOTP timeStep.
+// Reject any submitted code whose timeStep <= the stored value, so the same
+// 30-second window can't be reused. TODO: persist on the user document
+// (`totpLastUsedStep`) once the model migration lands; for now an in-memory
+// map is acceptable for a single-process deployment and degrades gracefully
+// (a process restart simply re-arms the window).
+const totpLastUsedStepByUserId = new Map<string, number>();
 
 function sha256(input: string): string {
   return crypto.createHash("sha256").update(input).digest("hex");
 }
 
-async function totpIsValid(token: string, secret: string): Promise<boolean> {
+interface TotpVerifyOutcome {
+  valid: boolean;
+  timeStep?: number;
+}
+
+async function totpIsValid(
+  token: string,
+  secret: string,
+  afterTimeStep?: number,
+): Promise<TotpVerifyOutcome> {
   try {
-    const result = await otpVerify({ token, secret, epochTolerance: TOTP_TOLERANCE });
-    return result.valid;
+    const result = await otpVerify({
+      token,
+      secret,
+      epochTolerance: TOTP_TOLERANCE,
+      afterTimeStep,
+    });
+    if (result.valid) {
+      // The umbrella otplib `verify` returns a TOTP|HOTP discriminated union;
+      // only the TOTP variant carries `timeStep`. Narrow with `in` so TS is
+      // happy and we degrade gracefully if HOTP somehow comes back.
+      const ts = "timeStep" in result ? result.timeStep : undefined;
+      return { valid: true, timeStep: ts };
+    }
+    return { valid: false };
   } catch {
-    return false;
+    return { valid: false };
   }
 }
 
@@ -86,9 +119,17 @@ export async function requestPasswordReset(email: string): Promise<void> {
   await getMailDriver().send({ to: user.email, subject, text, html });
 
   // Keep a structured trace for ops & test interception (the existing tests
-  // rely on capturing `resetUrl` from this log line).
+  // rely on capturing `resetUrl` from this log line). The raw URL contains
+  // the single-use reset token, so we omit it in production to keep the
+  // token out of log-aggregation pipelines and disk-resident log files.
+  const includeUrl = config.NODE_ENV !== "production";
   logger.info(
-    { userId: user._id.toString(), email: user.email, resetUrl, expiresAt },
+    {
+      userId: user._id.toString(),
+      email: user.email,
+      ...(includeUrl ? { resetUrl } : {}),
+      expiresAt,
+    },
     "password reset link dispatched via MailDriver",
   );
 }
@@ -135,6 +176,30 @@ export async function changePassword(
   user.passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
   user.mustChangePassword = false;
   await user.save();
+
+  void notifySecurityEvent(userId, {
+    kind: "PASSWORD_CHANGED",
+    title: "Your password was changed",
+    body: "If this wasn't you, reset it immediately and contact support.",
+    link: "/security",
+  });
+}
+
+async function notifySecurityEvent(
+  userId: string,
+  input: {
+    kind: "PASSWORD_CHANGED" | "TWO_FA_ENABLED" | "TWO_FA_DISABLED";
+    title: string;
+    body?: string;
+    link?: string;
+  },
+): Promise<void> {
+  try {
+    const { notify } = await import("../notifications/notifications.service.js");
+    await notify(userId, input);
+  } catch {
+    // Best-effort: never block the security flow on notification failure.
+  }
 }
 
 export interface TotpSetupResult {
@@ -151,6 +216,14 @@ export interface TotpSetupResult {
 export async function setupTotp(userId: string): Promise<TotpSetupResult> {
   const user = await User.findById(userId);
   if (!user) throw new UnauthorizedError("User not found");
+
+  // Refuse to overwrite an already-active 2FA secret. If we silently rotated
+  // it, an attacker with a session could re-enroll their own authenticator
+  // app and lock the legitimate user out. Force the explicit disable + setup
+  // flow (which requires the password) instead.
+  if (user.totpEnabled === true) {
+    throw new ConflictError("Disable 2FA before re-enrolling.");
+  }
 
   const secret = generateSecret();
   user.totpSecret = secret;
@@ -181,11 +254,26 @@ export async function verifyTotp(userId: string, token: string): Promise<boolean
     throw new ValidationError("2FA setup has not been started");
   }
 
-  const valid = await totpIsValid(token, secret);
-  if (!valid) return false;
+  const lastStep = totpLastUsedStepByUserId.get(userId);
+  const outcome = await totpIsValid(token, secret, lastStep);
+  if (!outcome.valid) return false;
+  // Replay protection: stamp the accepted timeStep so the same code (and any
+  // earlier window) cannot be replayed within the tolerance band.
+  if (outcome.timeStep !== undefined) {
+    totpLastUsedStepByUserId.set(userId, outcome.timeStep);
+  }
 
+  const wasEnabled = user.totpEnabled === true;
   user.totpEnabled = true;
   await user.save();
+  if (!wasEnabled) {
+    void notifySecurityEvent(userId, {
+      kind: "TWO_FA_ENABLED",
+      title: "Two-factor authentication enabled",
+      body: "Codes from your authenticator app will be required at sign-in.",
+      link: "/security",
+    });
+  }
   return true;
 }
 
@@ -200,9 +288,18 @@ export async function disableTotp(userId: string, password: string): Promise<voi
   const ok = await bcrypt.compare(password, (user as unknown as { passwordHash: string }).passwordHash);
   if (!ok) throw new UnauthorizedError("Password is incorrect");
 
+  const wasEnabled = user.totpEnabled === true;
   user.totpSecret = null;
   user.totpEnabled = false;
   await user.save();
+  if (wasEnabled) {
+    void notifySecurityEvent(userId, {
+      kind: "TWO_FA_DISABLED",
+      title: "Two-factor authentication disabled",
+      body: "If this wasn't you, change your password and re-enable 2FA.",
+      link: "/security",
+    });
+  }
 }
 
 /**
@@ -231,8 +328,15 @@ export async function loginWith2FA(
   const secret = (fullUser as unknown as { totpSecret: string | null } | null)?.totpSecret ?? null;
   if (!secret) throw new UnauthorizedError("Invalid credentials");
 
-  const valid = await totpIsValid(token, secret);
-  if (!valid) throw new UnauthorizedError("Invalid TOTP code");
+  const userIdStr = user._id.toString();
+  const lastStep = totpLastUsedStepByUserId.get(userIdStr);
+  const outcome = await totpIsValid(token, secret, lastStep);
+  if (!outcome.valid) throw new UnauthorizedError("Invalid TOTP code");
+  // Replay protection: same as verifyTotp, prevent reuse of a submitted code
+  // within the tolerance window across both 2FA-setup and 2FA-login paths.
+  if (outcome.timeStep !== undefined) {
+    totpLastUsedStepByUserId.set(userIdStr, outcome.timeStep);
+  }
 
   return issueTokensFor(user);
 }
@@ -306,4 +410,85 @@ export async function confirmEmailVerification(
   await record.save();
 
   return { userId: user._id.toString(), email: user.email };
+}
+
+// ---------------------------------------------------------------------------
+// Phone-number verification via 6-digit SMS OTP
+// ---------------------------------------------------------------------------
+
+/** 6 digits, leading-zero safe — `crypto.randomInt` is uniform over [0, 1e6). */
+function generateNumericOtp(): string {
+  return crypto.randomInt(0, 1_000_000).toString().padStart(6, "0");
+}
+
+/**
+ * Begin phone-verification: generate a 6-digit OTP, persist only its sha256
+ * hash with a 5-minute expiry, reset the attempts counter, and dispatch the
+ * code via the {@link SmsDriver} interface.
+ *
+ * Throws {@link ValidationError} when the user has no phone number on file
+ * (the FE should disable the action in that case but the server checks
+ * defensively), and {@link ConflictError} when the phone is already verified.
+ */
+export async function requestPhoneVerification(userId: string): Promise<void> {
+  const user = await User.findById(userId);
+  if (!user) throw new NotFoundError("User");
+  if (!user.phone) throw new ValidationError("Set a phone number on your profile first");
+  if (user.isPhoneVerified) throw new ConflictError("Phone already verified");
+
+  const otp = generateNumericOtp();
+  const codeHash = sha256(otp);
+
+  user.phoneVerificationCodeHash = codeHash;
+  user.phoneVerificationExpiresAt = new Date(Date.now() + PHONE_OTP_TTL_MS);
+  user.phoneVerificationAttempts = 0;
+  await user.save();
+
+  await getSmsDriver().send({
+    to: user.phone,
+    body: `Your Global NeoChain verification code is ${otp}. It expires in 5 minutes.`,
+  });
+
+  // Structured trace for ops; the OTP itself is never logged.
+  logger.info(
+    { userId: user._id.toString(), phone: user.phone, expiresAt: user.phoneVerificationExpiresAt },
+    "phone verification OTP dispatched via SmsDriver",
+  );
+}
+
+/**
+ * Confirm phone verification by exchanging a 6-digit OTP for a verified-phone
+ * flag flip. Wrong submissions increment the attempts counter and after
+ * {@link PHONE_OTP_MAX_ATTEMPTS} we lock out the active code so the caller has
+ * to request a fresh one — defends against brute-forcing the 1-in-a-million
+ * code space.
+ */
+export async function confirmPhoneVerification(userId: string, code: string): Promise<void> {
+  const user = await User.findById(userId).select(
+    "+phoneVerificationCodeHash +phoneVerificationExpiresAt +phoneVerificationAttempts",
+  );
+  if (!user) throw new NotFoundError("User");
+  if (user.isPhoneVerified) throw new ConflictError("Phone already verified");
+  if (!user.phoneVerificationCodeHash || !user.phoneVerificationExpiresAt) {
+    throw new ValidationError("Request a verification code first");
+  }
+  if (user.phoneVerificationExpiresAt.getTime() < Date.now()) {
+    throw new UnauthorizedError("Code expired — request a new one");
+  }
+  if ((user.phoneVerificationAttempts ?? 0) >= PHONE_OTP_MAX_ATTEMPTS) {
+    throw new UnauthorizedError("Too many attempts — request a new code");
+  }
+
+  const submittedHash = sha256(code);
+  if (submittedHash !== user.phoneVerificationCodeHash) {
+    user.phoneVerificationAttempts = (user.phoneVerificationAttempts ?? 0) + 1;
+    await user.save();
+    throw new UnauthorizedError("Incorrect code");
+  }
+
+  user.isPhoneVerified = true;
+  user.phoneVerificationCodeHash = null;
+  user.phoneVerificationExpiresAt = null;
+  user.phoneVerificationAttempts = 0;
+  await user.save();
 }

@@ -81,7 +81,16 @@ export interface CallContextValue {
   controls: CallControls;
   error: string | null;
   screenSharing: boolean;
-  start: (peerIds: string[], peerInfos: PeerInfo[]) => Promise<void>;
+  start: (
+    peerIds: string[],
+    peerInfos: PeerInfo[],
+    /**
+     * Pre-call media choices from the confirmation dialog. Defaults to
+     * `{ audio: true, video: true, screenShare: false }` for callers that
+     * haven't been migrated yet (the legacy "always with cam+mic" behavior).
+     */
+    options?: { audio?: boolean; video?: boolean; screenShare?: boolean },
+  ) => Promise<void>;
   accept: () => Promise<void>;
   reject: () => void;
   end: () => void;
@@ -105,6 +114,13 @@ interface PendingIncoming {
   /** All participants of the call as advertised by the server. */
   peerIds: string[];
   signal: unknown;
+  /**
+   * Whether the caller initiated a video call. Defaults to true when the
+   * server doesn't advertise the modality so we preserve existing behavior.
+   */
+  // TODO: have the backend stamp `video: boolean` on call:incoming so we can
+  // honor audio-only invites end-to-end.
+  video?: boolean;
 }
 
 export function CallProvider({ children }: { children: ReactNode }) {
@@ -132,6 +148,18 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const callIdRef = useRef<string | null>(null);
   const kindRef = useRef<CallKind>("DIRECT");
   const pendingIncomingRef = useRef<PendingIncoming | null>(null);
+  // Set the moment a start()/accept() begins acquiring media, cleared once the
+  // peer connections are wired up (or on failure). Guards against a double-tap
+  // racing two getUserMedia calls and leaking the first MediaStream.
+  const startingRef = useRef(false);
+  // Tracks the access token the calls socket is currently connected with, so
+  // that incidental token-string updates (e.g. silent refresh) don't cause us
+  // to tear down and rebuild the socket — and lose any active call with it.
+  const prevConnectedTokenRef = useRef<string | null>(null);
+  // Pending finishCall timeout id. Stored in a ref so a follow-up call can
+  // clear a stale timer instead of leaking it past unmount or queueing
+  // multiple parallel resets.
+  const finishTimeoutRef = useRef<number | null>(null);
 
   const stopLocalStream = useCallback(() => {
     const s = localStreamRef.current;
@@ -170,8 +198,15 @@ export function CallProvider({ children }: { children: ReactNode }) {
       setPeerInfo(null);
       setKind("DIRECT");
       kindRef.current = "DIRECT";
+      // Cancel any prior idle-reset timer so back-to-back finishCall() calls
+      // don't queue duplicate timeouts and so unmount can clear it cleanly.
+      if (finishTimeoutRef.current !== null) {
+        window.clearTimeout(finishTimeoutRef.current);
+        finishTimeoutRef.current = null;
+      }
       // Auto-clear error/ended state shortly after so UI returns to idle.
-      window.setTimeout(() => {
+      finishTimeoutRef.current = window.setTimeout(() => {
+        finishTimeoutRef.current = null;
         setState((s) => (s === "ended" ? "idle" : s));
       }, 1500);
     },
@@ -212,13 +247,47 @@ export function CallProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Connect socket whenever auth token is available.
+  //
+  // We deliberately treat presence-of-token, not the token string itself, as
+  // the connection trigger. A silent token refresh during an active call
+  // would otherwise tear the socket down (and any active call with it).
+  // Strategy: if we already have a live connection from a prior token and
+  // the new token is also truthy, do nothing. Only spin up a new socket on
+  // the truthy→from-nothing transition; only tear down on the truthy→null
+  // transition (logout / session expiry).
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      // Logout / session expiry: tear down whatever we had.
+      if (prevConnectedTokenRef.current) {
+        disconnectCallsSocket();
+        prevConnectedTokenRef.current = null;
+      }
+      return;
+    }
+    if (prevConnectedTokenRef.current) {
+      // Already connected from a prior token; don't recycle on token rotation.
+      return;
+    }
     connectCallsSocket(token);
+    prevConnectedTokenRef.current = token;
     return () => {
-      disconnectCallsSocket();
+      // This cleanup runs on unmount or when the next render's effect tears
+      // us down. The truthy→null path above is the only one we want to act
+      // on; actual logout path handles disconnect there.
+      // Leaving an explicit no-op so the dep array stays simple — disconnect
+      // happens in the truthy→null branch, not here.
     };
   }, [token]);
+
+  // Cancel any pending finishCall idle-reset timer when the provider unmounts.
+  useEffect(() => {
+    return () => {
+      if (finishTimeoutRef.current !== null) {
+        window.clearTimeout(finishTimeoutRef.current);
+        finishTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   // Subscribe to incoming-call events globally.
   useEffect(() => {
@@ -228,6 +297,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
       if (peersByIdRef.current.size > 0) return;
       const incomingKind = payload.kind ?? "DIRECT";
       const allPeerIds = Array.isArray(payload.peerIds) ? payload.peerIds : [];
+      // Snapshot the modality if the server provided one. The current
+      // IncomingCallPayload type doesn't declare `video` yet, so we read it
+      // via a defensive cast and fall back to undefined (which means the
+      // accept path defaults to video=true to preserve legacy behavior).
+      const advertisedVideo = (payload as unknown as { video?: boolean }).video;
       pendingIncomingRef.current = {
         callId: payload.callId,
         callerId: payload.callerId,
@@ -235,6 +309,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         kind: incomingKind,
         peerIds: allPeerIds,
         signal: payload.signal ?? payload.offer,
+        video: advertisedVideo,
       };
       // Track caller name for display.
       peerNamesRef.current.set(payload.callerId, payload.callerName);
@@ -250,11 +325,21 @@ export function CallProvider({ children }: { children: ReactNode }) {
   }, [token]);
 
   // Helper: build a SimplePeer for a given peer userId. Wires up signal/stream/close handlers.
+  //
+  // `useInviteForOffer` controls how the FIRST GROUP offer is routed: the
+  // call's original initiator uses `emitInviteMulti` (which the server fans
+  // out via call:incoming so the receiver sees a ringing UI). Mid-call
+  // mesh-expansion peers (created in response to `onPeerAccepted` /
+  // `onPeerSignal` for an already-accepted call) MUST use `emitPeerSignal` —
+  // the server rejects `call:invite-multi` from non-initiators, so otherwise
+  // their offers would be silently dropped and the late mesh would never
+  // form.
   const createPeer = useCallback(
     (
       peerUserId: string,
       isInitiator: boolean,
       stream: MediaStream,
+      useInviteForOffer = false,
     ): SimplePeer.Instance => {
       const peer = new SimplePeer({
         initiator: isInitiator,
@@ -267,9 +352,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
       peer.on("signal", (data: SimplePeer.SignalData) => {
         const id = callIdRef.current;
         if (!id) return;
-        // Use the unified call:peer-signal channel for everything (mesh).
-        // For 1-1 calls we ALSO emit the legacy invite/accept/ICE channels
-        // so older clients still work, but the receiver only consumes one.
         if (kindRef.current === "DIRECT") {
           if (
             (data as RTCSessionDescriptionInit).type === "offer" &&
@@ -294,11 +376,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
           }
           return;
         }
-        // GROUP calls: send everything on the unified channel.
-        if (
+        // GROUP calls: route based on whether this peer's offer should ring
+        // the receiver (only the original call initiator's first round) vs.
+        // be plumbed through the mid-call mesh channel.
+        const isOffer =
           (data as RTCSessionDescriptionInit).type === "offer" &&
-          (data as RTCSessionDescriptionInit).sdp
-        ) {
+          !!(data as RTCSessionDescriptionInit).sdp;
+        if (isOffer && useInviteForOffer) {
           emitInviteMulti({
             callId: id,
             peerId: peerUserId,
@@ -331,6 +415,14 @@ export function CallProvider({ children }: { children: ReactNode }) {
       });
 
       peer.on("error", () => {
+        // Tear the SimplePeer instance down before dropping our reference —
+        // otherwise its underlying RTCPeerConnection, ICE agents, and DTLS
+        // state hang around in memory until GC eventually picks them up.
+        try {
+          peer.destroy();
+        } catch {
+          // ignore
+        }
         peersByIdRef.current.delete(peerUserId);
         removeRemoteStream(peerUserId);
         if (peersByIdRef.current.size === 0) {
@@ -388,13 +480,21 @@ export function CallProvider({ children }: { children: ReactNode }) {
     return off;
   }, [token]);
 
-  // Subscribe to multi-peer signals.
+  // Subscribe to multi-peer signals. Auto-create a non-initiator peer for an
+  // unknown sender — this is how a late joiner receives offers from existing
+  // members of a GROUP call (and, symmetrically, how existing members accept
+  // a new joiner's offer).
   useEffect(() => {
     if (!token) return;
     const off = onPeerSignal(({ callId: incomingId, fromUserId, signal }) => {
       if (callIdRef.current && callIdRef.current !== incomingId) return;
-      const peer = peersByIdRef.current.get(fromUserId);
-      if (!peer) return;
+      let peer = peersByIdRef.current.get(fromUserId);
+      if (!peer) {
+        if (kindRef.current !== "GROUP") return;
+        const stream = localStreamRef.current;
+        if (!stream) return;
+        peer = createPeer(fromUserId, false, stream);
+      }
       try {
         peer.signal(signal as Parameters<SimplePeer.Instance["signal"]>[0]);
       } catch {
@@ -402,18 +502,28 @@ export function CallProvider({ children }: { children: ReactNode }) {
       }
     });
     return off;
-  }, [token]);
+  }, [token, createPeer]);
 
-  // Late joiner: when another peer accepts, we may need to receive their
-  // signaling. For the initial mesh setup the existing offer/answer flow
-  // covers it, so this is just a hook for future symmetric expansion.
+  // Late joiner mesh completion: when another peer accepts a GROUP call, we
+  // may need a connection to them. Glare avoidance — only the participant
+  // with the lexicographically smaller userId initiates; the other side
+  // creates a non-initiator peer when the offer arrives via onPeerSignal.
   useEffect(() => {
     if (!token) return;
-    const off = onPeerAccepted(() => {
-      // No-op for now: the late joiner will signal back once their peer is up.
+    const off = onPeerAccepted(({ callId: incomingId, userId: acceptedUserId }) => {
+      if (callIdRef.current && callIdRef.current !== incomingId) return;
+      if (!me) return;
+      if (acceptedUserId === me.id) return;
+      if (peersByIdRef.current.has(acceptedUserId)) return;
+      if (kindRef.current !== "GROUP") return;
+      const stream = localStreamRef.current;
+      if (!stream) return;
+      if (me.id < acceptedUserId) {
+        createPeer(acceptedUserId, true, stream);
+      }
     });
     return off;
-  }, [token]);
+  }, [token, me, createPeer]);
 
   useEffect(() => {
     if (!token) return;
@@ -457,17 +567,23 @@ export function CallProvider({ children }: { children: ReactNode }) {
   }, [token, finishCall]);
 
   const start = useCallback(
-    async (peerIds: string[], peerInfos: PeerInfo[]) => {
+    async (
+      peerIds: string[],
+      peerInfos: PeerInfo[],
+      options?: { audio?: boolean; video?: boolean; screenShare?: boolean },
+    ) => {
       if (!me) {
         setError("Not signed in");
         return;
       }
       if (peersByIdRef.current.size > 0) return;
+      if (startingRef.current) return;
       if (peerIds.length === 0) return;
       if (peerIds.length > 3) {
         setError("Group calls support up to 4 participants.");
         return;
       }
+      startingRef.current = true;
       setError(null);
       const isGroup = peerIds.length > 1;
       const callKind: CallKind = isGroup ? "GROUP" : "DIRECT";
@@ -479,17 +595,50 @@ export function CallProvider({ children }: { children: ReactNode }) {
       // Pre-populate names for any later display.
       for (const p of peerInfos) peerNamesRef.current.set(p.userId, p.name);
 
+      // Resolve pre-call media choices. Default keeps legacy behavior
+      // (cam + mic, no screen share) for any caller that hasn't been
+      // migrated through the new PreCallDialog yet.
+      const wantAudio = options?.audio ?? true;
+      const wantVideo = options?.video ?? true;
+      const wantScreenShare = options?.screenShare ?? false;
+
       let stream: MediaStream;
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true,
-        });
+        if (wantScreenShare) {
+          // Screen share replaces camera at the start; we still capture mic
+          // separately so the user can talk over the share. Camera off.
+          const display = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: false,
+          });
+          if (wantAudio) {
+            try {
+              const micStream = await navigator.mediaDevices.getUserMedia({
+                audio: true,
+                video: false,
+              });
+              for (const t of micStream.getAudioTracks()) display.addTrack(t);
+            } catch {
+              // Mic refusal is non-fatal — proceed with screen-only.
+            }
+          }
+          stream = display;
+        } else {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: wantVideo,
+            audio: wantAudio,
+          });
+        }
       } catch {
-        setError("Allow camera and mic to start a call.");
+        setError(
+          wantScreenShare
+            ? "Allow screen sharing to start the call."
+            : "Allow camera and mic to start a call.",
+        );
         setState("idle");
         setPeerInfo(null);
         setPeers([]);
+        startingRef.current = false;
         return;
       }
 
@@ -504,6 +653,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         setState("idle");
         setPeerInfo(null);
         setPeers([]);
+        startingRef.current = false;
         return;
       }
 
@@ -512,10 +662,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
       callIdRef.current = session.id;
       setCallId(session.id);
 
-      // Create one peer connection per remote peer (mesh).
+      // Create one peer connection per remote peer (mesh). We are the call's
+      // original initiator, so route first offers via call:invite-multi so
+      // each peer's UI rings.
       for (const peerId of peerIds) {
-        createPeer(peerId, true, stream);
+        createPeer(peerId, true, stream, /* useInviteForOffer */ true);
       }
+      startingRef.current = false;
     },
     [me, createPeer],
   );
@@ -523,19 +676,34 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const accept = useCallback(async () => {
     const pending = pendingIncomingRef.current;
     if (!pending) return;
+    // Same busy-flag pattern as start() — a double-tap on the accept button
+    // can race two getUserMedia calls and leak the first MediaStream.
+    if (startingRef.current) return;
+    startingRef.current = true;
     setError(null);
+
+    // Honor the invite's modality when the server advertised one. Default to
+    // video=true to preserve legacy behavior for older payloads.
+    // TODO: drop this fallback once the backend always stamps `video` on
+    // call:incoming.
+    const wantVideo = pending.video ?? true;
 
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
+        video: wantVideo,
         audio: true,
       });
     } catch {
-      setError("Allow camera and mic to accept the call.");
+      setError(
+        wantVideo
+          ? "Allow camera and mic to accept the call."
+          : "Allow microphone access to accept the call.",
+      );
       // Decline implicitly.
       emitReject({ callId: pending.callId, callerId: pending.callerId });
       pendingIncomingRef.current = null;
+      startingRef.current = false;
       finishCall("ended");
       return;
     }
@@ -571,11 +739,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
       );
     } catch {
       setError("Failed to accept call.");
+      startingRef.current = false;
       finishCall("ended");
       return;
     }
     pendingIncomingRef.current = null;
     setState("active");
+    startingRef.current = false;
   }, [createPeer, finishCall]);
 
   const reject = useCallback(() => {

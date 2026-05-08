@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getApi } from "@/api/axios";
+import { onNotification } from "@/features/chat/socket";
 
 const api = () => getApi();
 
@@ -9,9 +11,29 @@ export const NOTIFICATION_KINDS = [
   "EXPENSE_REJECTED",
   "PAYSLIP_AVAILABLE",
   "TASK_ASSIGNED",
+  "TASK_COMMENTED",
   "EMPLOYEE_VERIFIED",
+  "EMPLOYEE_DEACTIVATED",
   "DEPARTMENT_ASSIGNMENT",
   "PROMOTED_TO_PM",
+  "DEMOTED_FROM_PM",
+  "CANDIDATE_AWAITING_REVIEW",
+  "CANDIDATE_HR_APPROVED",
+  "CANDIDATE_REJECTED",
+  "CANDIDATE_REGISTERED",
+  "CALL_MISSED",
+  "BUG_ASSIGNED",
+  "BUG_RESOLVED",
+  "TWO_FA_ENABLED",
+  "TWO_FA_DISABLED",
+  "PASSWORD_CHANGED",
+  "ATTENDANCE_REMINDER",
+  "ATTENDANCE_EDITED",
+  "ATTENDANCE_AUTO_CHECKOUT",
+  "NEW_MESSAGE",
+  "FEEDBACK_SUBMITTED",
+  "CALENDAR_INVITE",
+  "CALENDAR_REMINDER",
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -84,4 +106,19 @@ export function useMarkAllNotificationsRead() {
       qc.invalidateQueries({ queryKey: notificationKeys.all });
     },
   });
+}
+
+/**
+ * Subscribes to backend `notification:new` socket events and invalidates the
+ * notifications + unread-count queries so the UI updates instantly without
+ * waiting for the 30s poll. Mount once near the auth-gated app shell.
+ */
+export function useNotificationsRealtime(): void {
+  const qc = useQueryClient();
+  useEffect(() => {
+    const off = onNotification(() => {
+      qc.invalidateQueries({ queryKey: notificationKeys.all });
+    });
+    return off;
+  }, [qc]);
 }

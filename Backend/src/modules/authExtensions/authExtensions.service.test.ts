@@ -51,7 +51,7 @@ describe("authExtensions.service", () => {
     const { requestPasswordReset } = await import("./authExtensions.service.js");
     const { PasswordResetToken } = await import("../../models/passwordResetToken.model.js");
     await requestPasswordReset("a@b.com");
-    const tokens = await PasswordResetToken.find({});
+    const tokens = await PasswordResetToken.find({}).select("+tokenHash");
     expect(tokens).toHaveLength(1);
     // The persisted hash is sha256-hex of the raw token (64 chars).
     expect(tokens[0]!.tokenHash).toMatch(/^[0-9a-f]{64}$/);
@@ -190,7 +190,7 @@ describe("authExtensions.service", () => {
       const { EmailVerificationToken } = await import(
         "../../models/emailVerificationToken.model.js"
       );
-      const tokens = await EmailVerificationToken.find({});
+      const tokens = await EmailVerificationToken.find({}).select("+tokenHash");
       expect(tokens).toHaveLength(1);
       expect(tokens[0]!.tokenHash).toMatch(/^[0-9a-f]{64}$/);
       expect(tokens[0]!.usedAt).toBeNull();
@@ -238,6 +238,139 @@ describe("authExtensions.service", () => {
       expect(fresh?.isVerified).toBe(true);
     } finally {
       const { setMailDriver: reset } = await import("../../lib/mail.js");
+      reset({ send: async () => {} });
+    }
+  });
+
+  // Phone verification ----------------------------------------------------
+
+  it("requestPhoneVerification with no phone throws ValidationError", async () => {
+    const u = await seedUser("nophone@b.com", "pw");
+    const { requestPhoneVerification } = await import("./authExtensions.service.js");
+    await expect(requestPhoneVerification(u._id.toString())).rejects.toThrow(
+      /phone number/i,
+    );
+  });
+
+  it("requestPhoneVerification with already-verified phone throws ConflictError", async () => {
+    const u = await seedUser("a@b.com", "pw");
+    const { User } = await import("../../models/user.model.js");
+    await User.updateOne(
+      { _id: u._id },
+      { $set: { phone: "+15555550100", isPhoneVerified: true } },
+    );
+    const { requestPhoneVerification } = await import("./authExtensions.service.js");
+    await expect(requestPhoneVerification(u._id.toString())).rejects.toThrow(
+      /already verified|Conflict/i,
+    );
+  });
+
+  it("requestPhoneVerification stores hashed code + expires + sends SMS", async () => {
+    const u = await seedUser("a@b.com", "pw");
+    const { User } = await import("../../models/user.model.js");
+    await User.updateOne({ _id: u._id }, { $set: { phone: "+15555550100" } });
+
+    const { setSmsDriver } = await import("../../lib/sms.js");
+    const captured: { to: string; body: string }[] = [];
+    setSmsDriver({
+      send: async (m) => {
+        captured.push({ to: m.to, body: m.body });
+      },
+    });
+    try {
+      const { requestPhoneVerification } = await import("./authExtensions.service.js");
+      const before = Date.now();
+      await requestPhoneVerification(u._id.toString());
+      const after = Date.now();
+
+      expect(captured).toHaveLength(1);
+      expect(captured[0]!.to).toBe("+15555550100");
+      const otp = captured[0]!.body.match(/\b(\d{6})\b/)?.[1];
+      expect(otp).toMatch(/^\d{6}$/);
+
+      const fresh = await User.findById(u._id).select(
+        "+phoneVerificationCodeHash +phoneVerificationExpiresAt +phoneVerificationAttempts",
+      );
+      const stored = fresh as unknown as {
+        phoneVerificationCodeHash: string | null;
+        phoneVerificationExpiresAt: Date | null;
+        phoneVerificationAttempts: number;
+      };
+      // Stored value is the sha256 hash, not the OTP itself.
+      expect(stored.phoneVerificationCodeHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(stored.phoneVerificationCodeHash).not.toBe(otp);
+      expect(stored.phoneVerificationAttempts).toBe(0);
+      // Expiry is roughly 5 minutes out.
+      const exp = stored.phoneVerificationExpiresAt!.getTime();
+      expect(exp).toBeGreaterThanOrEqual(before + 5 * 60 * 1000 - 50);
+      expect(exp).toBeLessThanOrEqual(after + 5 * 60 * 1000 + 50);
+    } finally {
+      const { setSmsDriver: reset } = await import("../../lib/sms.js");
+      reset({ send: async () => {} });
+    }
+  });
+
+  it("confirmPhoneVerification with wrong code throws and increments attempts", async () => {
+    const u = await seedUser("a@b.com", "pw");
+    const { User } = await import("../../models/user.model.js");
+    await User.updateOne({ _id: u._id }, { $set: { phone: "+15555550100" } });
+
+    const { setSmsDriver } = await import("../../lib/sms.js");
+    setSmsDriver({ send: async () => {} });
+    try {
+      const { requestPhoneVerification, confirmPhoneVerification } = await import(
+        "./authExtensions.service.js"
+      );
+      await requestPhoneVerification(u._id.toString());
+      await expect(
+        confirmPhoneVerification(u._id.toString(), "000000"),
+      ).rejects.toThrow(/Incorrect|Unauthorized/i);
+
+      const fresh = await User.findById(u._id).select("+phoneVerificationAttempts");
+      expect((fresh as unknown as { phoneVerificationAttempts: number }).phoneVerificationAttempts).toBe(1);
+      expect(fresh?.isPhoneVerified).toBe(false);
+    } finally {
+      const { setSmsDriver: reset } = await import("../../lib/sms.js");
+      reset({ send: async () => {} });
+    }
+  });
+
+  it("confirmPhoneVerification with correct code marks isPhoneVerified=true", async () => {
+    const u = await seedUser("a@b.com", "pw");
+    const { User } = await import("../../models/user.model.js");
+    await User.updateOne({ _id: u._id }, { $set: { phone: "+15555550100" } });
+
+    const { setSmsDriver } = await import("../../lib/sms.js");
+    let capturedOtp: string | undefined;
+    setSmsDriver({
+      send: async (m) => {
+        capturedOtp = m.body.match(/\b(\d{6})\b/)?.[1];
+      },
+    });
+    try {
+      const { requestPhoneVerification, confirmPhoneVerification } = await import(
+        "./authExtensions.service.js"
+      );
+      await requestPhoneVerification(u._id.toString());
+      expect(capturedOtp).toMatch(/^\d{6}$/);
+
+      await confirmPhoneVerification(u._id.toString(), capturedOtp!);
+
+      const fresh = await User.findById(u._id).select(
+        "+phoneVerificationCodeHash +phoneVerificationExpiresAt +phoneVerificationAttempts",
+      );
+      expect(fresh?.isPhoneVerified).toBe(true);
+      const stored = fresh as unknown as {
+        phoneVerificationCodeHash: string | null;
+        phoneVerificationExpiresAt: Date | null;
+        phoneVerificationAttempts: number;
+      };
+      // Successful verify clears the active code so it can't be replayed.
+      expect(stored.phoneVerificationCodeHash).toBeNull();
+      expect(stored.phoneVerificationExpiresAt).toBeNull();
+      expect(stored.phoneVerificationAttempts).toBe(0);
+    } finally {
+      const { setSmsDriver: reset } = await import("../../lib/sms.js");
       reset({ send: async () => {} });
     }
   });

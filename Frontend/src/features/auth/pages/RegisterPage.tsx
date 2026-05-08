@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import axios from "axios";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Check, Circle, MailCheck, Search } from "lucide-react";
+import { Check, Circle, MailCheck, Search, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -15,25 +15,15 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useAppSelector } from "@/app/hooks";
 import { AuthShell } from "../components/AuthShell";
 import { useRegister, useRegistrationStatus, type ApprovalStatus } from "../api/hooks";
-import { useDepartmentsList } from "@/features/employees/api/hooks";
 import {
   RegisterSchema,
   RegistrationStatusCheckSchema,
   type RegisterValues,
   type RegistrationStatusCheckValues,
 } from "../schemas";
-
-const NO_DEPARTMENT_VALUE = "__none__";
 
 const STATUS_COPY: Record<ApprovalStatus, { label: string; tone: string; hint: string }> = {
   PENDING_HR: {
@@ -61,7 +51,6 @@ const STATUS_COPY: Record<ApprovalStatus, { label: string; tone: string; hint: s
 export function RegisterPage() {
   const user = useAppSelector((s) => s.auth.user);
   const register = useRegister();
-  const depts = useDepartmentsList();
   const [serverError, setServerError] = useState<string | null>(null);
   const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
 
@@ -73,7 +62,9 @@ export function RegisterPage() {
       password: "",
       confirmPassword: "",
       phone: "",
-      departmentId: "",
+      // Avatar is required; we leave it undefined initially so the resolver
+      // surfaces the "Profile picture is required" message on submit.
+      avatar: undefined as unknown as File,
     },
   });
 
@@ -97,7 +88,7 @@ export function RegisterPage() {
         name: values.name,
         password: values.password,
         phone: values.phone || undefined,
-        departmentId: values.departmentId || undefined,
+        avatar: values.avatar,
       },
       {
         onSuccess: (res) => setSubmittedEmail(res.email),
@@ -194,6 +185,25 @@ export function RegisterPage() {
 
               <FormField
                 control={form.control}
+                name="avatar"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                      Profile picture
+                    </FormLabel>
+                    <FormControl>
+                      <AvatarPicker
+                        value={field.value as File | undefined}
+                        onChange={(f) => field.onChange(f)}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
                 name="password"
                 render={({ field }) => (
                   <FormItem>
@@ -254,45 +264,24 @@ export function RegisterPage() {
                       Phone <span className="text-muted-foreground/60 normal-case">(optional)</span>
                     </FormLabel>
                     <FormControl>
-                      <Input
-                        autoComplete="tel"
-                        className="h-11"
-                        placeholder="+1 555 555 1234"
-                        {...field}
-                        value={field.value ?? ""}
-                      />
+                      <div className="relative flex items-center">
+                        <span className="pointer-events-none absolute left-3 select-none text-sm font-medium text-muted-foreground">
+                          +91
+                        </span>
+                        <Input
+                          autoComplete="tel-national"
+                          inputMode="numeric"
+                          maxLength={10}
+                          placeholder="9876543210"
+                          className="h-11 pl-12"
+                          {...field}
+                          value={field.value ?? ""}
+                          onChange={(e) =>
+                            field.onChange(e.target.value.replace(/\D/g, "").slice(0, 10))
+                          }
+                        />
+                      </div>
                     </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="departmentId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                      Department <span className="text-muted-foreground/60 normal-case">(optional)</span>
-                    </FormLabel>
-                    <Select
-                      value={field.value ? field.value : NO_DEPARTMENT_VALUE}
-                      onValueChange={(v) => field.onChange(v === NO_DEPARTMENT_VALUE ? "" : v)}
-                    >
-                      <FormControl>
-                        <SelectTrigger className="h-11">
-                          <SelectValue placeholder="— Pick later —" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value={NO_DEPARTMENT_VALUE}>— Pick later —</SelectItem>
-                        {depts.data?.items.map((d) => (
-                          <SelectItem key={d.id} value={d.id}>
-                            {d.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -332,6 +321,95 @@ export function RegisterPage() {
   );
 }
 
+/**
+ * Inline avatar picker for the registration form. Uses an object URL for
+ * preview and revokes it when the file changes / component unmounts so we
+ * don't leak blob URLs.
+ */
+function AvatarPicker({
+  value,
+  onChange,
+}: {
+  value: File | undefined;
+  onChange: (file: File | undefined) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!value) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(value);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [value]);
+
+  return (
+    <div className="flex items-center gap-3">
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        className="group relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border border-dashed border-border/60 bg-muted/30 transition-colors hover:border-primary/60 hover:bg-primary/5"
+        aria-label={value ? "Change profile picture" : "Upload profile picture"}
+      >
+        {previewUrl ? (
+          <img
+            src={previewUrl}
+            alt=""
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <Upload className="h-5 w-5 text-muted-foreground" strokeWidth={1.75} />
+        )}
+      </button>
+      <div className="min-w-0 flex-1 text-xs">
+        {value ? (
+          <>
+            <div className="truncate font-medium text-foreground">{value.name}</div>
+            <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              {(value.size / 1024).toFixed(0)} KB · {value.type.split("/")[1]?.toUpperCase()}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                onChange(undefined);
+                if (inputRef.current) inputRef.current.value = "";
+              }}
+              className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-destructive"
+            >
+              <X className="h-3 w-3" /> Remove
+            </button>
+          </>
+        ) : (
+          <div className="leading-snug text-muted-foreground">
+            PNG, JPEG, WebP or GIF. Max 2 MB.
+            <br />
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              className="mt-1 inline-flex font-medium text-primary hover:underline"
+            >
+              Choose a file
+            </button>
+          </div>
+        )}
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        className="sr-only"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          onChange(f);
+        }}
+      />
+    </div>
+  );
+}
+
 function SubmittedState({ email }: { email: string }) {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500 fill-mode-both">
@@ -343,7 +421,8 @@ function SubmittedState({ email }: { email: string }) {
           Application submitted
         </h2>
         <p className="text-sm text-muted-foreground">
-          We've notified HR. You'll receive an email when your account is approved.
+          We've notified HR. Your verification email will arrive after Admin approval — check
+          your inbox once you're cleared.
         </p>
       </div>
 

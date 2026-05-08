@@ -129,7 +129,11 @@ describe("/employees", () => {
     const res = await request(app)
       .post(`/employees/${me._id}/avatar`)
       .set("Authorization", `Bearer ${tk}`)
-      .attach("file", Buffer.from("PNG"), { filename: "a.png", contentType: "image/png" });
+      .attach(
+        "file",
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x00]),
+        { filename: "a.png", contentType: "image/png" }
+      );
     expect(res.status).toBe(200);
     expect(res.body.avatarUrl).toMatch(/^http:\/\/test\/files\/avatar\//);
   });

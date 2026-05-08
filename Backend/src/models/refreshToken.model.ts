@@ -2,7 +2,7 @@ import { Schema, model, type InferSchemaType, type Model, Types } from "mongoose
 
 const refreshTokenSchema = new Schema(
   {
-    jti: { type: String, required: true, unique: true, index: true },
+    jti: { type: String, required: true, unique: true },
     family: { type: String, required: true, index: true },
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
     expiresAt: { type: Date, required: true, index: { expires: 0 } },

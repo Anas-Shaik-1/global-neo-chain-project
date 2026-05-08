@@ -10,14 +10,12 @@ export const nameSchema = z
 
 /**
  * Optional phone — accepts empty string (cleanest with RHF defaults) or a
- * loosely-validated international number.
+ * 10-digit Indian mobile. The backend stores the canonical `+91XXXXXXXXXX`
+ * E.164 form; the UI always works with the bare 10-digit subscriber part.
  */
 export const phoneOptionalSchema = z
   .string()
-  .regex(
-    /^[+\d][\d\s\-()]{6,24}$/,
-    "Enter a valid phone number, 7-25 digits with optional +, spaces, dashes",
-  )
+  .regex(/^[6-9]\d{9}$/, "Enter a valid 10-digit mobile number")
   .or(z.literal(""))
   .optional();
 

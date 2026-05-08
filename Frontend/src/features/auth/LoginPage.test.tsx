@@ -7,11 +7,18 @@ import { configureStore } from "@reduxjs/toolkit";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { authSlice } from "./authSlice";
 import { uiSlice } from "@/features/ui/uiSlice";
+import { presenceSlice } from "@/features/chat/presenceSlice";
 import { setupApiClient, getApi } from "@/api/axios";
 import { LoginPage } from "./LoginPage";
 
 function buildStore() {
-  const store = configureStore({ reducer: { auth: authSlice.reducer, ui: uiSlice.reducer } });
+  const store = configureStore({
+    reducer: {
+      auth: authSlice.reducer,
+      ui: uiSlice.reducer,
+      presence: presenceSlice.reducer,
+    },
+  });
   setupApiClient(store, "http://api");
   return store;
 }

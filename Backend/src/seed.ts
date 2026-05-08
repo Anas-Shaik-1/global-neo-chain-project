@@ -3,8 +3,18 @@ import { connectDb, disconnectDb } from "./db/index.js";
 import { User, type Role } from "./models/user.model.js";
 import { Conversation } from "./models/conversation.model.js";
 import { CallSession } from "./models/callSession.model.js";
+import { Department } from "./models/department.model.js";
 import { config } from "./config/index.js";
 import { logger } from "./lib/logger.js";
+
+// Default departments seeded so HR/Admin can place candidates immediately
+// without first having to spin up the org chart by hand. New deployments
+// almost always need at least Frontend / Backend / Testing.
+const DEFAULT_DEPARTMENTS: { name: string; description?: string }[] = [
+  { name: "Frontend", description: "Web/UI engineering" },
+  { name: "Backend", description: "Services, APIs, infrastructure" },
+  { name: "Testing", description: "QA, test automation, bug triage" },
+];
 
 interface DemoUser {
   email: string;
@@ -51,6 +61,31 @@ const DEMO_USERS: DemoUser[] = [
     isProjectManager: false,
   },
 ];
+
+function slugifyDept(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+async function seedDefaultDepartments(): Promise<void> {
+  for (const d of DEFAULT_DEPARTMENTS) {
+    const code = slugifyDept(d.name);
+    const exists = await Department.findOne({ $or: [{ name: d.name }, { code }] }).lean();
+    if (exists) {
+      logger.info({ name: d.name }, "department already exists; skipping");
+      continue;
+    }
+    await Department.create({
+      name: d.name,
+      code,
+      description: d.description ?? null,
+      managerId: null,
+    });
+    logger.info({ name: d.name, code }, "department created");
+  }
+}
 
 async function main() {
   await connectDb();
@@ -142,6 +177,8 @@ async function main() {
     logger.warn({ err }, "CallSession legacy backfill skipped (collection may not exist yet)");
   }
 
+  await seedDefaultDepartments();
+
   for (const u of DEMO_USERS) {
     const existing = await User.findOne({ email: u.email });
     if (existing) {
@@ -167,10 +204,15 @@ async function main() {
     logger.info({ email: u.email, role: u.role }, "user created");
   }
 
-  logger.info("seed complete — demo credentials:");
-  for (const u of DEMO_USERS) {
-    const tag = u.isProjectManager ? `${u.role} · PM` : u.role;
-    logger.info(`  ${tag.padEnd(12)} ${u.email}  /  ${u.password}`);
+  logger.info("seed complete");
+  // Only print the demo passwords in non-production environments so credentials
+  // never end up in prod log aggregators / disk-resident log files.
+  if (config.NODE_ENV !== "production") {
+    logger.info("demo credentials:");
+    for (const u of DEMO_USERS) {
+      const tag = u.isProjectManager ? `${u.role} · PM` : u.role;
+      logger.info(`  ${tag.padEnd(12)} ${u.email}  /  ${u.password}`);
+    }
   }
 
   await disconnectDb();

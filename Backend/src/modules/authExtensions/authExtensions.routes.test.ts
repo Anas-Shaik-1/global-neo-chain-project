@@ -91,7 +91,7 @@ describe("/auth-extensions routes", () => {
       const rawToken = new URL(capturedUrl!).searchParams.get("token")!;
       const confirmRes = await request(app)
         .post("/auth/password-reset/confirm")
-        .send({ token: rawToken, newPassword: "brand-new-pw-123" });
+        .send({ token: rawToken, newPassword: "BrandNewPw-123" });
       expect(confirmRes.status).toBe(204);
 
       // Old password no longer works
@@ -103,7 +103,7 @@ describe("/auth-extensions routes", () => {
       // New password works
       const newLogin = await request(app)
         .post("/auth/login")
-        .send({ email: "a@b.com", password: "brand-new-pw-123" });
+        .send({ email: "a@b.com", password: "BrandNewPw-123" });
       expect(newLogin.status).toBe(200);
       expect(newLogin.body.accessToken).toBeTruthy();
     } finally {
@@ -173,6 +173,70 @@ describe("/auth-extensions routes", () => {
       expect(await EmailVerificationToken.countDocuments()).toBe(1);
     } finally {
       const { setMailDriver: reset } = await import("../../lib/mail.js");
+      reset({ send: async () => {} });
+    }
+  });
+
+  it("POST /auth/phone/verify with bad code returns 401", async () => {
+    const u = await seedUser("a@b.com", "pw");
+    const { User } = await import("../../models/user.model.js");
+    await User.updateOne({ _id: u._id }, { $set: { phone: "+15555550100" } });
+    const { setSmsDriver } = await import("../../lib/sms.js");
+    setSmsDriver({ send: async () => {} });
+    try {
+      const app = await buildApp();
+      const login = await request(app).post("/auth/login").send({ email: "a@b.com", password: "pw" });
+      // Need to request first to seed a code on the user.
+      await request(app)
+        .post("/auth/phone/request-verify")
+        .set("Authorization", `Bearer ${login.body.accessToken}`)
+        .send();
+      const res = await request(app)
+        .post("/auth/phone/verify")
+        .set("Authorization", `Bearer ${login.body.accessToken}`)
+        .send({ code: "000000" });
+      expect(res.status).toBe(401);
+    } finally {
+      const { setSmsDriver: reset } = await import("../../lib/sms.js");
+      reset({ send: async () => {} });
+    }
+  });
+
+  it("POST /auth/phone/request-verify → /auth/phone/verify happy path", async () => {
+    const u = await seedUser("a@b.com", "pw");
+    const { User } = await import("../../models/user.model.js");
+    await User.updateOne({ _id: u._id }, { $set: { phone: "+15555550100" } });
+
+    const { setSmsDriver } = await import("../../lib/sms.js");
+    let capturedOtp: string | undefined;
+    setSmsDriver({
+      send: async (m) => {
+        capturedOtp = m.body.match(/\b(\d{6})\b/)?.[1];
+      },
+    });
+    try {
+      const app = await buildApp();
+      const login = await request(app)
+        .post("/auth/login")
+        .send({ email: "a@b.com", password: "pw" });
+
+      const reqRes = await request(app)
+        .post("/auth/phone/request-verify")
+        .set("Authorization", `Bearer ${login.body.accessToken}`)
+        .send();
+      expect(reqRes.status).toBe(204);
+      expect(capturedOtp).toMatch(/^\d{6}$/);
+
+      const verRes = await request(app)
+        .post("/auth/phone/verify")
+        .set("Authorization", `Bearer ${login.body.accessToken}`)
+        .send({ code: capturedOtp });
+      expect(verRes.status).toBe(204);
+
+      const fresh = await User.findById(u._id);
+      expect(fresh?.isPhoneVerified).toBe(true);
+    } finally {
+      const { setSmsDriver: reset } = await import("../../lib/sms.js");
       reset({ send: async () => {} });
     }
   });

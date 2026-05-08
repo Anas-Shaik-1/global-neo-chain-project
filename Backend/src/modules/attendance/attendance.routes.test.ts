@@ -114,10 +114,12 @@ describe("/attendance", () => {
     expect(res.body.durationMinutes).toBeGreaterThanOrEqual(89);
   });
 
-  it("POST /attendance/clock-out within 1hr returns 409", async () => {
+  it("POST /attendance/clock-out is allowed at any time after clock-in", async () => {
+    // Manual clock-out used to require ≥1h after clock-in; that restriction
+    // was lifted because employees own their own time. Now any clock-in,
+    // even minutes-old, can be closed out manually.
     const e = await seedAndToken("EMPLOYEE", "e@b.com");
     const { Attendance } = await import("../../models/attendance.model.js");
-    // Pre-seed a clock-in 10 minutes ago — too soon to clock out.
     const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
     await Attendance.create({
       userId: new Types.ObjectId(e.id),
@@ -130,7 +132,8 @@ describe("/attendance", () => {
       .post("/attendance/clock-out")
       .set("Authorization", `Bearer ${e.token}`)
       .send({});
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(200);
+    expect(res.body.clockOut).toBeTruthy();
   });
 
   it("POST /attendance/lunch-start returns 200 happy path", async () => {

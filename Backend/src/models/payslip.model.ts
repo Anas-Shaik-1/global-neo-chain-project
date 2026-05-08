@@ -10,7 +10,15 @@ export type BreakdownKind = (typeof BREAKDOWN_KINDS)[number];
 const breakdownItemSchema = new Schema(
   {
     label: { type: String, required: true, trim: true, maxlength: 100 },
-    amount: { type: Number, required: true, min: 0 },
+    amount: {
+      type: Number,
+      required: true,
+      min: 0,
+      validate: {
+        validator: (v: number) => Number.isInteger(v) && v >= 0,
+        message: "amount must be a non-negative integer (cents)",
+      },
+    },
     kind: { type: String, enum: BREAKDOWN_KINDS, required: true },
   },
   { _id: false },
@@ -36,9 +44,25 @@ const payslipSchema = new Schema(
       default: "INR",
       uppercase: true,
     },
-    gross: { type: Number, required: true, min: 0 },
+    gross: {
+      type: Number,
+      required: true,
+      min: 0,
+      validate: {
+        validator: (v: number) => Number.isInteger(v) && v >= 0,
+        message: "gross must be a non-negative integer (cents)",
+      },
+    },
     breakdown: { type: [breakdownItemSchema], default: [] },
-    netAmount: { type: Number, required: true, min: 0 },
+    netAmount: {
+      type: Number,
+      required: true,
+      min: 0,
+      validate: {
+        validator: (v: number) => Number.isInteger(v) && v >= 0,
+        message: "netAmount must be a non-negative integer (cents)",
+      },
+    },
     notes: { type: String, default: null, maxlength: 1000 },
     generatedById: {
       type: Schema.Types.ObjectId,

@@ -15,11 +15,13 @@ export const chatRouter = Router();
 chatRouter.use(requireAuth);
 
 chatRouter.get("/conversations", ctl.getConversations);
+chatRouter.get("/me/unread-count", ctl.getUnreadTotal);
 chatRouter.post(
   "/conversations",
   validate(OpenConversationBody),
   ctl.postOpenConversation,
 );
+chatRouter.post("/conversations/:id/read", ctl.postMarkConversationRead);
 chatRouter.get("/conversations/:id/messages", ctl.getMessages);
 chatRouter.post(
   "/conversations/:id/messages",

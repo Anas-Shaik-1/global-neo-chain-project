@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -28,17 +28,43 @@ interface Props {
   onCreated?: (project: Project) => void;
 }
 
+/**
+ * Slug rules from the backend: lowercase alphanumeric + hyphens, max 30 chars.
+ * Mirrors the regex in `Backend/src/models/project.model.ts`.
+ */
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "") // strip diacritics
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 30);
+}
+
 export function CreateProjectDialog({ open, onOpenChange, onCreated }: Props) {
   const create = useCreateProject();
   const [error, setError] = useState<string | null>(null);
+  // The slug auto-fills from the name until the user manually edits it.
+  // Once they touch it, we stop overwriting on subsequent name changes.
+  const slugTouchedRef = useRef(false);
 
   const form = useForm<CreateProjectValues>({
     resolver: zodResolver(CreateProjectSchema),
     defaultValues: { name: "", key: "", description: "" },
   });
 
+  // Watch the name and mirror its slug into the key field until the user
+  // hand-edits the slug.
+  const watchedName = form.watch("name");
+  useEffect(() => {
+    if (slugTouchedRef.current) return;
+    form.setValue("key", slugify(watchedName ?? ""), { shouldValidate: false });
+  }, [watchedName, form]);
+
   function reset() {
     form.reset({ name: "", key: "", description: "" });
+    slugTouchedRef.current = false;
     setError(null);
   }
 
@@ -98,7 +124,13 @@ export function CreateProjectDialog({ open, onOpenChange, onCreated }: Props) {
                     <Input
                       placeholder="atlas"
                       {...field}
-                      onChange={(e) => field.onChange(e.target.value.toLowerCase())}
+                      onChange={(e) => {
+                        // Once the user types in the slug field, stop
+                        // auto-generating from the name. Sanitize input to
+                        // match the backend regex on the way in.
+                        slugTouchedRef.current = true;
+                        field.onChange(slugify(e.target.value));
+                      }}
                     />
                   </FormControl>
                   <FormMessage />

@@ -1,9 +1,10 @@
-import { Types } from "mongoose";
+import mongoose, { Types } from "mongoose";
 import {
   Payslip,
   type PayslipDoc,
   type BreakdownKind,
 } from "../../models/payslip.model.js";
+import { Expense } from "../../models/expense.model.js";
 import { User, type UserDoc } from "../../models/user.model.js";
 import type { Role } from "../../models/user.model.js";
 import {
@@ -15,6 +16,21 @@ import {
 import { createFileStorage } from "../../lib/storage.js";
 import { generatePayslipPdf } from "../../lib/pdf.js";
 import { logger } from "../../lib/logger.js";
+import { getMailDriver } from "../../lib/mail.js";
+import { formatCurrency, getInrRateAt } from "../../lib/currency.js";
+
+/**
+ * Asserts an integer-money value (paise/cents) is a non-negative integer.
+ * Stops fractional or negative writes from polluting the DB at the service
+ * boundary so we don't have to defensively round on every read.
+ */
+function assertIntegerMoney(value: number, label: string): void {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new ValidationError(
+      `${label} must be a non-negative integer in minor units (got ${value})`,
+    );
+  }
+}
 
 const storage = createFileStorage();
 
@@ -189,13 +205,131 @@ async function notifyPayslipAvailable(userId: string, month: string): Promise<vo
   });
 }
 
+/**
+ * Send the freshly-generated payslip PDF to the employee's email. Best-effort
+ * — never throws; failures are logged so the payslip itself isn't rolled
+ * back if SMTP is down. The PDF buffer is computed server-side using the
+ * same generator the on-demand /payslips/:id/pdf route uses, so the email
+ * attachment matches the downloadable file byte-for-byte.
+ */
+async function emailPayslipToEmployee(
+  payslip: PayslipDoc,
+): Promise<void> {
+  try {
+    const employee = await User.findById(payslip.userId)
+      .select("name email jobTitle")
+      .lean<Pick<UserDoc, "name" | "email" | "jobTitle">>();
+    if (!employee || !employee.email) {
+      logger.warn(
+        { userId: payslip.userId.toString(), month: payslip.month },
+        "payroll.emailPayslipToEmployee — no email on user; skipping",
+      );
+      return;
+    }
+
+    // Resolve admin contact for the payslip footer (same fallback the
+    // on-demand PDF route uses — generator → any active admin).
+    type ContactSource = {
+      name: string;
+      email: string;
+      phone?: string | null;
+      role?: string;
+      isActive?: boolean;
+    };
+    let contact: ContactSource | null = (await User.findById(payslip.generatedById)
+      .select("name email phone role isActive")
+      .lean()) as ContactSource | null;
+    if (!contact || !contact.isActive || contact.role !== "ADMIN") {
+      contact = (await User.findOne({ role: "ADMIN", isActive: true })
+        .select("name email phone")
+        .lean()) as ContactSource | null;
+    }
+
+    const buffer = await generatePayslipPdf(payslip, employee, {
+      adminName: contact?.name ?? null,
+      adminPhone: contact?.phone ?? null,
+      adminEmail: contact?.email ?? null,
+    });
+
+    const subject = `Payslip · ${payslip.month}`;
+    const netLabel = formatCurrency(payslip.netAmount, payslip.currency);
+    const text = [
+      `Hi ${employee.name},`,
+      "",
+      `Your payslip for ${payslip.month} is attached as a PDF.`,
+      `Net amount: ${netLabel}`,
+      "",
+      "Any questions on the breakdown — reply to this email and we'll come back to you.",
+      "",
+      "— Global NeoChain Solutions",
+    ].join("\n");
+
+    const html = `
+<div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;color:#1f2937;">
+  <p>Hi ${employee.name},</p>
+  <p>Your payslip for <strong>${payslip.month}</strong> is attached as a PDF.</p>
+  <p style="margin:16px 0;padding:12px 16px;background:#f9fafb;border-radius:8px;">
+    Net amount: <strong>${netLabel}</strong>
+  </p>
+  <p>Any questions on the breakdown — reply to this email and we'll come back to you.</p>
+  <p style="margin-top:20px;color:#6b7280;font-size:12px;">— Global NeoChain Solutions</p>
+</div>`.trim();
+
+    await getMailDriver().send({
+      to: employee.email,
+      subject,
+      text,
+      html,
+      attachments: [
+        {
+          filename: `payslip-${payslip.month}.pdf`,
+          content: buffer,
+          contentType: "application/pdf",
+        },
+      ],
+    });
+
+    logger.info(
+      {
+        userId: payslip.userId.toString(),
+        month: payslip.month,
+        to: employee.email,
+      },
+      "payroll: payslip emailed to employee",
+    );
+  } catch (err) {
+    logger.warn(
+      { err, userId: payslip.userId.toString(), month: payslip.month },
+      "payroll.emailPayslipToEmployee failed (best-effort)",
+    );
+  }
+}
+
+/**
+ * Compute the net payslip amount.
+ *
+ * CONTRACT (gross convention):
+ *   `gross` is the *base salary before earnings/deductions* — i.e. the
+ *   raw monthly salary stored on the user/contract. Earnings (bonus,
+ *   reimbursements, allowances) are added on top via `breakdown`, and
+ *   deductions (tax, PF, advances) are subtracted. So:
+ *
+ *     net = gross + Σ(EARNING items) − Σ(DEDUCTION items)
+ *
+ *   Callers MUST NOT pre-fold earnings into `gross`. If you have a
+ *   bonus or allowance, pass it as a `BreakdownItem` with kind="EARNING".
+ *
+ * All amounts are integer minor units (paise/cents). The `Math.round` at
+ * the end is defensive — a stray fraction from a future caller would
+ * otherwise persist as a wrong cent in the DB.
+ */
 function computeNet(gross: number, breakdown: BreakdownItem[]): number {
   let net = gross;
   for (const item of breakdown) {
     if (item.kind === "EARNING") net += item.amount;
     else if (item.kind === "DEDUCTION") net -= item.amount;
   }
-  return net;
+  return Math.round(net);
 }
 
 export async function createPayslip(
@@ -205,38 +339,163 @@ export async function createPayslip(
   if (input.gross < 0) {
     throw new ValidationError("gross must be >= 0");
   }
+  // Integer-money guard: gross + each breakdown amount must be non-negative
+  // integer minor units. Rejects fractional cents at the service boundary.
+  assertIntegerMoney(input.gross, "gross");
   const breakdown = input.breakdown ?? [];
+  for (const [i, item] of breakdown.entries()) {
+    assertIntegerMoney(item.amount, `breakdown[${i}].amount`);
+  }
   const netAmount = computeNet(input.gross, breakdown);
   if (netAmount < 0) {
     throw new ValidationError("netAmount cannot be negative");
   }
+  assertIntegerMoney(netAmount, "netAmount");
   // Make sure target user exists
   const target = await User.findById(input.userId).select("_id");
   if (!target) throw new NotFoundError("User");
 
+  const userObjectId = new Types.ObjectId(input.userId);
+  const generatedByObjectId = new Types.ObjectId(generatedById);
+  const currency = input.currency ?? "INR";
+  const now = new Date();
+  // Snapshot the FX rate at write time so historical aggregations don't
+  // silently re-rate when prod swaps in a real FX provider.
+  const fxRateInrAtCreate = getInrRateAt(currency, now);
+
+  const payslipPayload = {
+    userId: userObjectId,
+    month: input.month,
+    currency,
+    gross: input.gross,
+    breakdown,
+    netAmount,
+    notes: input.notes ?? null,
+    generatedById: generatedByObjectId,
+    pdfUrl: null,
+    fxRateInrAtCreate,
+  };
+
+  const expensePayload = {
+    userId: userObjectId,
+    amount: netAmount,
+    currency,
+    category: "SALARY" as const,
+    description: `Salary for ${input.month}`,
+    incurredOn: now,
+    status: "APPROVED" as const,
+    decisionById: generatedByObjectId,
+    decisionNote: "Auto-generated from payroll",
+    decidedAt: now,
+    fxRateInrAtCreate,
+  };
+
+  // Detect "transactions not supported" errors from a single-node Mongo so
+  // dev/test environments can still run the create un-transactionally.
+  const isTransactionUnsupportedError = (err: unknown): boolean => {
+    const e = err as { code?: number; codeName?: string; message?: string };
+    if (e.codeName === "IllegalOperation") return true;
+    if (typeof e.message === "string") {
+      const m = e.message;
+      if (m.includes("Transaction numbers are only allowed")) return true;
+      if (m.includes("replica set")) return true;
+      if (m.includes("not supported")) return true;
+    }
+    return false;
+  };
+
+  let created: PayslipDoc | null = null;
+  let session: mongoose.ClientSession | null = null;
+
   try {
-    const created = await Payslip.create({
-      userId: new Types.ObjectId(input.userId),
-      month: input.month,
-      currency: input.currency ?? "INR",
-      gross: input.gross,
-      breakdown,
-      netAmount,
-      notes: input.notes ?? null,
-      generatedById: new Types.ObjectId(generatedById),
-      pdfUrl: null,
+    session = await mongoose.startSession();
+    await session.withTransaction(async () => {
+      const docs = await Payslip.create([payslipPayload], { session });
+      created = (docs[0] ?? null) as PayslipDoc | null;
+
+      // Idempotency guard: don't create a second mirror if one already
+      // exists for this user+month. The model agent owns the unique
+      // index — until that lands, this read-then-write is the best we
+      // can do, and it's safe inside a transaction.
+      const existingMirror = await Expense.exists(
+        {
+          userId: userObjectId,
+          category: "SALARY",
+          // Match by description since the model doesn't expose a `month`
+          // field; the description includes the month string we wrote.
+          description: `Salary for ${input.month}`,
+        },
+        // exists() typings don't take session in older mongoose; cast.
+      ).session(session);
+
+      if (!existingMirror) {
+        await Expense.create([expensePayload], { session });
+      } else {
+        logger.info(
+          { userId: input.userId, month: input.month },
+          "payroll.createPayslip skipping mirror — salary expense already exists",
+        );
+      }
     });
-    void notifyPayslipAvailable(input.userId, input.month).catch((err) => {
-      logger.warn({ err }, "payroll.createPayslip notify failed");
-    });
-    return denormalizeOne(created);
   } catch (err) {
     const e = err as { code?: number };
     if (e.code === 11000) {
       throw new ConflictError("Payslip already exists for this month");
     }
-    throw err;
+    if (!isTransactionUnsupportedError(err)) {
+      throw err;
+    }
+
+    // Fall back to un-transactional path for single-node dev Mongo.
+    logger.warn(
+      { userId: input.userId, month: input.month },
+      "payroll.createPayslip transactions unsupported — falling back to un-transactional create",
+    );
+    try {
+      created = await Payslip.create(payslipPayload);
+    } catch (createErr) {
+      const ce = createErr as { code?: number };
+      if (ce.code === 11000) {
+        throw new ConflictError("Payslip already exists for this month");
+      }
+      throw createErr;
+    }
+
+    // Idempotency check before mirror create.
+    const existingMirror = await Expense.exists({
+      userId: userObjectId,
+      category: "SALARY",
+      description: `Salary for ${input.month}`,
+    });
+    if (!existingMirror) {
+      try {
+        await Expense.create(expensePayload);
+      } catch (mirrorErr) {
+        logger.warn(
+          { err: mirrorErr, userId: input.userId, month: input.month },
+          "payroll.createPayslip salary-expense mirror failed (un-transactional fallback)",
+        );
+      }
+    }
+  } finally {
+    if (session) {
+      await session.endSession();
+    }
   }
+
+  if (!created) {
+    // Defensive: should be unreachable since both branches assign or throw.
+    throw new Error("payroll.createPayslip: payslip not created");
+  }
+
+  void notifyPayslipAvailable(input.userId, input.month).catch((err) => {
+    logger.warn({ err }, "payroll.createPayslip notify failed");
+  });
+  // Fire-and-forget: send the PDF as an attachment to the employee's
+  // mailbox. Wrapped in `void` so we don't block the API response on
+  // SMTP latency, and `emailPayslipToEmployee` never throws.
+  void emailPayslipToEmployee(created);
+  return denormalizeOne(created);
 }
 
 export interface PayslipPdfResult {
@@ -258,8 +517,34 @@ export async function getOrGeneratePdf(
   )) as Pick<UserDoc, "name" | "email" | "jobTitle"> | null;
   if (!employee) throw new NotFoundError("Employee");
 
+  // The footer of every payslip surfaces the admin who can answer queries
+  // about it. Prefer the admin who actually generated this payslip; fall
+  // back to any active admin if the generator account is no longer present.
+  type ContactSource = {
+    name: string;
+    email: string;
+    phone?: string | null;
+    role?: string;
+    isActive?: boolean;
+  };
+  let contactSource: ContactSource | null = (await User.findById(doc.generatedById)
+    .select("name email phone role isActive")
+    .lean()) as ContactSource | null;
+  if (!contactSource || !contactSource.isActive || contactSource.role !== "ADMIN") {
+    contactSource = (await User.findOne({
+      role: "ADMIN",
+      isActive: true,
+    })
+      .select("name email phone")
+      .lean()) as ContactSource | null;
+  }
+
   // For MVP we regenerate every time, but persist key+url for reference.
-  const buffer = await generatePayslipPdf(doc, employee);
+  const buffer = await generatePayslipPdf(doc, employee, {
+    adminName: contactSource?.name ?? null,
+    adminPhone: contactSource?.phone ?? null,
+    adminEmail: contactSource?.email ?? null,
+  });
 
   // Attempt to persist a cached copy in storage. If storage is unavailable this
   // shouldn't fail the request — we still return the freshly-generated buffer.

@@ -12,6 +12,10 @@ export const EXPENSE_CATEGORIES = [
   "OFFICE",
   "TRAINING",
   "OTHER",
+  // SALARY is a system-generated category created when payroll runs. It is
+  // never user-submitted; the expenses list view shows it in a dedicated
+  // "Salaries" section so reimbursement reporting isn't muddled with payroll.
+  "SALARY",
 ] as const;
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 
@@ -29,7 +33,15 @@ const expenseSchema = new Schema(
       required: true,
       index: true,
     },
-    amount: { type: Number, required: true, min: 0 },
+    amount: {
+      type: Number,
+      required: true,
+      min: 0,
+      validate: {
+        validator: (v: number) => Number.isInteger(v) && v >= 0,
+        message: "amount must be a non-negative integer (cents)",
+      },
+    },
     currency: {
       type: String,
       required: true,

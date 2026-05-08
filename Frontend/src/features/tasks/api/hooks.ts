@@ -13,7 +13,7 @@ function errorMessage(err: unknown, fallback: string): string {
 }
 
 export type TaskStatus = "TODO" | "IN_PROGRESS" | "DONE";
-export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
+export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "ENHANCEMENT";
 
 export interface Project {
   id: string;

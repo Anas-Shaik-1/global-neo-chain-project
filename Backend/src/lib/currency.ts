@@ -6,6 +6,27 @@ export const INR_RATES: Record<string, number> = {
 };
 
 /**
+ * Returns the INR conversion rate for `currency` at `atDate` (defaults to now).
+ *
+ * STUB: this currently returns the hard-coded rate from `INR_RATES` regardless
+ * of `atDate`. Production must wire this to a real FX provider (e.g. ECB,
+ * OpenExchangeRates) that can return a historical rate for `atDate`. The
+ * `atDate` parameter is accepted now so callers can already snapshot rates
+ * at write time — once the real provider lands, we won't need to change
+ * call sites.
+ *
+ * Unknown currencies fall back to 1 (same as `toInrCents`) so callers that
+ * snapshot the rate get a predictable, bounded number rather than NaN.
+ */
+export function getInrRateAt(
+  currency: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  atDate?: Date,
+): number {
+  return INR_RATES[currency.toUpperCase()] ?? 1;
+}
+
+/**
  * Convert an amount in the smallest currency unit of `currency` (cents/paise)
  * into INR paise. Unknown currencies fall back to a 1:1 rate so a missing
  * lookup never throws — surfaces a wrong-but-bounded number rather than a 500.

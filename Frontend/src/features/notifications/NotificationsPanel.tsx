@@ -1,15 +1,33 @@
+import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Bell,
   Receipt,
   FileText,
   ListChecks,
+  MessageSquare,
   CheckCircle2,
+  Clock,
   ShieldCheck,
   Building2,
   Star,
+  StarOff,
+  UserCheck,
+  UserPlus,
+  UserX,
+  PhoneMissed,
+  Bug,
+  KeyRound,
+  Lock,
+  LockOpen,
+  AlarmClock,
+  CalendarClock,
+  CalendarDays,
+  Lightbulb,
   type LucideIcon,
 } from "lucide-react";
+import { playNotificationChime } from "@/lib/notificationSound";
+import { useAppSelector } from "@/app/hooks";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,9 +50,29 @@ const KIND_ICONS: Record<NotificationKind, LucideIcon> = {
   EXPENSE_REJECTED: Receipt,
   PAYSLIP_AVAILABLE: FileText,
   TASK_ASSIGNED: ListChecks,
+  TASK_COMMENTED: MessageSquare,
   EMPLOYEE_VERIFIED: ShieldCheck,
+  EMPLOYEE_DEACTIVATED: UserX,
   DEPARTMENT_ASSIGNMENT: Building2,
   PROMOTED_TO_PM: Star,
+  DEMOTED_FROM_PM: StarOff,
+  CANDIDATE_AWAITING_REVIEW: UserCheck,
+  CANDIDATE_HR_APPROVED: UserCheck,
+  CANDIDATE_REJECTED: UserX,
+  CANDIDATE_REGISTERED: UserPlus,
+  CALL_MISSED: PhoneMissed,
+  BUG_ASSIGNED: Bug,
+  BUG_RESOLVED: Bug,
+  TWO_FA_ENABLED: Lock,
+  TWO_FA_DISABLED: LockOpen,
+  PASSWORD_CHANGED: KeyRound,
+  ATTENDANCE_REMINDER: AlarmClock,
+  ATTENDANCE_EDITED: Clock,
+  ATTENDANCE_AUTO_CHECKOUT: Clock,
+  NEW_MESSAGE: MessageSquare,
+  FEEDBACK_SUBMITTED: Lightbulb,
+  CALENDAR_INVITE: CalendarDays,
+  CALENDAR_REMINDER: CalendarClock,
 };
 
 function relativeTime(iso: string): string {
@@ -101,6 +139,7 @@ function NotificationRow({
 
 export function NotificationsPanel() {
   const navigate = useNavigate();
+  const userId = useAppSelector((s) => s.auth.user?.id);
   const list = useNotifications({ limit: 20 });
   const unread = useUnreadCount();
   const markRead = useMarkNotificationRead();
@@ -108,7 +147,40 @@ export function NotificationsPanel() {
   const items = list.data?.items ?? [];
   const unreadCount = unread.data?.count ?? 0;
   const hasUnread = unreadCount > 0;
-  const badge = unreadCount > 9 ? "9+" : String(unreadCount);
+  const badge = unreadCount > 99 ? "99+" : String(unreadCount);
+
+  // Track previous count across polls so we can detect *new* arrivals and
+  // play a chime. The ref starts undefined so the very first poll on a fresh
+  // page load doesn't trigger a sound for already-existing unread items —
+  // only deltas during the session count as "new".
+  const prevCountRef = useRef<number | undefined>(undefined);
+
+  // When the authenticated user changes (login, logout, account switch),
+  // resync the baseline so we don't chime against a stale count belonging to
+  // the previous session.
+  useEffect(() => {
+    prevCountRef.current = unread.data?.count;
+    // Intentionally only react to user identity changes — count updates are
+    // handled by the effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
+  useEffect(() => {
+    if (unread.data === undefined) return;
+    const current = unread.data.count;
+    const prev = prevCountRef.current;
+    if (prev !== undefined && current > prev) {
+      // Chime is best-effort — autoplay restrictions or audio decode errors
+      // shouldn't prevent us from updating the count tracker. Logging would
+      // just be noise in the console.
+      try {
+        playNotificationChime();
+      } catch {
+        // ignore
+      }
+    }
+    prevCountRef.current = current;
+  }, [unread.data]);
 
   function handleClick(n: AppNotification) {
     if (!n.readAt) markRead.mutate(n.id);
@@ -130,12 +202,18 @@ export function NotificationsPanel() {
         >
           <Bell className="h-4 w-4" />
           {hasUnread && (
-            <span
-              aria-hidden
-              className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 font-mono text-[9px] font-semibold leading-none text-primary-foreground shadow-sm"
-            >
-              {badge}
-            </span>
+            <>
+              <span
+                aria-hidden
+                className="absolute -right-1 -top-1 inline-flex h-4 w-4 animate-ping rounded-full bg-primary/60"
+              />
+              <span
+                aria-hidden
+                className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-primary px-1 font-mono text-[10px] font-bold leading-none text-primary-foreground shadow-[0_0_0_2px_hsl(var(--card))]"
+              >
+                {badge}
+              </span>
+            </>
           )}
         </Button>
       </DropdownMenuTrigger>

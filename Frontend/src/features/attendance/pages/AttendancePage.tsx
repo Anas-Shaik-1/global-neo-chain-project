@@ -7,6 +7,7 @@ import {
   LogOut,
   CalendarDays,
   Globe,
+  Pencil,
   Utensils,
   UtensilsCrossed,
 } from "lucide-react";
@@ -28,6 +29,9 @@ import {
   todayUtcString,
   type AttendanceEntry,
 } from "../api/hooks";
+import { EditAttendanceDialog } from "../components/EditAttendanceDialog";
+import { TeamStatusPanel } from "../components/TeamStatusPanel";
+import { useAppSelector } from "@/app/hooks";
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
@@ -43,6 +47,19 @@ function formatHoursMinutes(totalMinutes: number): string {
   if (h === 0) return `${m}m`;
   if (m === 0) return `${h}h`;
   return `${h}h ${m}m`;
+}
+
+/**
+ * Stopwatch-style display: HH:MM:SS. Used while the user is currently
+ * clocked in so they have a precise, glanceable read on how long they've
+ * been working today.
+ */
+function formatStopwatch(totalMs: number): string {
+  const safe = Math.max(0, Math.floor(totalMs / 1000));
+  const h = Math.floor(safe / 3600);
+  const m = Math.floor((safe % 3600) / 60);
+  const s = safe % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 function formatDecimalHours(totalMinutes: number): string {
@@ -112,17 +129,11 @@ function StatusCard({
   const clockedInNoLunch =
     !!todayEntry && !todayEntry.clockOut && !todayEntry.lunchStart;
 
-  // Compute clock-out availability (must be 1h+ after clockIn).
-  let canClockOut = false;
-  let minutesUntilClockOut = 0;
-  if (todayEntry && !todayEntry.clockOut) {
-    const elapsed = now - new Date(todayEntry.clockIn).getTime();
-    canClockOut = elapsed >= ONE_HOUR_MS;
-    minutesUntilClockOut = Math.max(
-      0,
-      Math.ceil((ONE_HOUR_MS - elapsed) / 60000),
-    );
-  }
+  // Manual clock-out is always available while an entry is open. The old
+  // 1-hour minimum was removed: users now own their own clock without the
+  // server forcing a wait.
+  const canClockOut = !!todayEntry && !todayEntry.clockOut;
+  void ONE_HOUR_MS;
 
   // Status text.
   let status: string;
@@ -184,6 +195,36 @@ function StatusCard({
           )}
         </div>
 
+        {/* Live stopwatch — only renders while currently clocked in (not on
+            lunch and not yet clocked out). Subtracts the lunch window from
+            the running total so the displayed value reflects actual worked
+            time, matching what the server records on clock-out. */}
+        {todayEntry && !todayEntry.clockOut && !onLunch && (() => {
+          const clockInMs = new Date(todayEntry.clockIn).getTime();
+          let lunchMs = 0;
+          if (todayEntry.lunchStart && todayEntry.lunchEnd) {
+            lunchMs = Math.max(
+              0,
+              new Date(todayEntry.lunchEnd).getTime() -
+                new Date(todayEntry.lunchStart).getTime(),
+            );
+          }
+          const workedMs = Math.max(0, now - clockInMs - lunchMs);
+          return (
+            <div className="rounded-xl border border-primary/30 bg-primary/5 px-5 py-4">
+              <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-primary/80">
+                Working time
+              </div>
+              <div className="mt-1 font-mono text-4xl font-bold tabular-nums tracking-tight text-foreground">
+                {formatStopwatch(workedMs)}
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Auto-checkout at midnight if you forget to clock out.
+              </div>
+            </div>
+          );
+        })()}
+
         {notClockedIn && (
           <div className="space-y-3">
             <div className="flex items-center gap-3">
@@ -223,18 +264,9 @@ function StatusCard({
               onClick={onClockOut}
               disabled={pending || !canClockOut}
               size="lg"
-              title={
-                canClockOut
-                  ? undefined
-                  : "You can clock out 1 hour after clock-in"
-              }
             >
               <LogOut className="mr-2 h-4 w-4" />
-              {canClockOut
-                ? pending
-                  ? "Clocking out…"
-                  : "Clock Out"
-                : `Available in ${minutesUntilClockOut}m`}
+              {pending ? "Clocking out…" : "Clock Out"}
             </Button>
           </div>
         )}
@@ -250,16 +282,9 @@ function StatusCard({
               disabled={pending || !canClockOut}
               variant="outline"
               size="lg"
-              title={
-                canClockOut
-                  ? undefined
-                  : "You can clock out 1 hour after clock-in"
-              }
             >
               <LogOut className="mr-2 h-4 w-4" />
-              {canClockOut
-                ? "Clock Out"
-                : `Clock out in ${minutesUntilClockOut}m`}
+              {pending ? "Clocking out…" : "Clock Out"}
             </Button>
           </div>
         )}
@@ -270,18 +295,9 @@ function StatusCard({
               onClick={onClockOut}
               disabled={pending || !canClockOut}
               size="lg"
-              title={
-                canClockOut
-                  ? undefined
-                  : "You can clock out 1 hour after clock-in"
-              }
             >
               <LogOut className="mr-2 h-4 w-4" />
-              {canClockOut
-                ? pending
-                  ? "Clocking out…"
-                  : "Clock Out"
-                : `Available in ${minutesUntilClockOut}m`}
+              {pending ? "Clocking out…" : "Clock Out"}
             </Button>
           </div>
         )}
@@ -312,12 +328,9 @@ export function AttendancePage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [isRemoteDraft, setIsRemoteDraft] = useState(false);
   const [now, setNow] = useState<number>(() => Date.now());
-
-  // Tick "now" once a minute so the running-time and 1hr-rule render live.
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 60_000);
-    return () => clearInterval(id);
-  }, []);
+  const role = useAppSelector((s) => s.auth.user?.role);
+  const isAdmin = role === "ADMIN";
+  const [editTarget, setEditTarget] = useState<AttendanceEntry | null>(null);
 
   const today = todayUtcString();
   const isCurrentMonth = month === currentMonthString();
@@ -326,6 +339,17 @@ export function AttendancePage() {
       isCurrentMonth ? data?.entries.find((e) => e.date === today) ?? null : null,
     [data, today, isCurrentMonth],
   );
+
+  // Tick "now" once per second while the user is currently clocked in (not
+  // yet clocked out). Otherwise idle on a 60s tick which is fine for the
+  // 1-hour-clock-out gate to refresh. The live tick is what powers the
+  // stopwatch in StatusCard.
+  const isLiveSession = !!todayEntry && !todayEntry.clockOut;
+  useEffect(() => {
+    const intervalMs = isLiveSession ? 1000 : 60_000;
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [isLiveSession]);
 
   const totalLunchMinutes = useMemo(
     () => (data?.entries ?? []).reduce((sum, e) => sum + (e.lunchMinutes ?? 0), 0),
@@ -422,6 +446,10 @@ export function AttendancePage() {
         />
       )}
 
+      {/* "Team today" lives only on the current month — historical months
+          show the user's own past entries, not a live presence snapshot. */}
+      {isCurrentMonth && <TeamStatusPanel />}
+
       {isLoading || !data ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Skeleton className="h-28 w-full" />
@@ -464,51 +492,156 @@ export function AttendancePage() {
               No attendance entries for this month.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-muted-foreground">
-                    <th className="py-2">Date</th>
-                    <th>Clock in</th>
-                    <th>Clock out</th>
-                    <th>Duration</th>
-                    <th>Lunch</th>
-                    <th>Remote</th>
-                    <th>Notes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.entries.map((e) => (
-                    <tr key={e.id} className="border-b border-border/50">
-                      <td className="py-2 font-mono text-xs">{e.date}</td>
-                      <td className="font-mono text-xs">{formatTime(e.clockIn)}</td>
-                      <td className="font-mono text-xs">{formatTime(e.clockOut)}</td>
-                      <td>
-                        {e.durationMinutes !== null
-                          ? formatHoursMinutes(e.durationMinutes)
-                          : "—"}
-                      </td>
-                      <td className="text-muted-foreground">
-                        {e.lunchMinutes > 0 ? `${e.lunchMinutes} min` : "—"}
-                      </td>
-                      <td>
-                        {e.isRemote ? (
-                          <span className="inline-flex items-center gap-1 text-primary">
-                            <Globe className="h-3.5 w-3.5" /> yes
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">no</span>
-                        )}
-                      </td>
-                      <td className="text-muted-foreground">{e.notes ?? "—"}</td>
+            <>
+              {/* Mobile: card stack — date + duration as the primary signal,
+                  remote/lunch/notes as secondary metadata. */}
+              <div className="space-y-3 md:hidden">
+                {data.entries.map((e) => (
+                  <div
+                    key={e.id}
+                    className="rounded-lg border border-border/60 bg-card/40 p-4 shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+                          {e.date}
+                        </div>
+                        <div className="mt-0.5 text-base font-semibold tabular-nums text-foreground">
+                          {e.durationMinutes !== null
+                            ? formatHoursMinutes(e.durationMinutes)
+                            : "Active"}
+                        </div>
+                      </div>
+                      {e.isRemote && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                          <Globe className="h-3 w-3" />
+                          Remote
+                        </span>
+                      )}
+                    </div>
+
+                    <dl className="mt-3 grid grid-cols-2 gap-3 border-t border-border/40 pt-3 text-sm">
+                      <div>
+                        <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                          Clock in
+                        </dt>
+                        <dd className="mt-0.5 font-mono tabular-nums text-foreground">
+                          {formatTime(e.clockIn)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                          Clock out
+                        </dt>
+                        <dd className="mt-0.5 font-mono tabular-nums text-foreground">
+                          {formatTime(e.clockOut)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                          Lunch
+                        </dt>
+                        <dd className="mt-0.5 text-foreground">
+                          {e.lunchMinutes > 0 ? `${e.lunchMinutes} min` : "—"}
+                        </dd>
+                      </div>
+                      {e.notes && (
+                        <div className="col-span-2">
+                          <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                            Notes
+                          </dt>
+                          <dd className="mt-0.5 text-sm text-foreground">{e.notes}</dd>
+                        </div>
+                      )}
+                    </dl>
+
+                    {isAdmin && (
+                      <div className="mt-3 flex justify-end border-t border-border/40 pt-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5"
+                          onClick={() => setEditTarget(e)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Edit entry
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop: table */}
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-muted-foreground">
+                      <th className="py-2">Date</th>
+                      <th>Clock in</th>
+                      <th>Clock out</th>
+                      <th>Duration</th>
+                      <th>Lunch</th>
+                      <th>Remote</th>
+                      <th>Notes</th>
+                      {isAdmin && <th className="text-right">Actions</th>}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {data.entries.map((e) => (
+                      <tr key={e.id} className="border-b border-border/50">
+                        <td className="py-2 font-mono text-xs">{e.date}</td>
+                        <td className="font-mono text-xs">{formatTime(e.clockIn)}</td>
+                        <td className="font-mono text-xs">{formatTime(e.clockOut)}</td>
+                        <td>
+                          {e.durationMinutes !== null
+                            ? formatHoursMinutes(e.durationMinutes)
+                            : "—"}
+                        </td>
+                        <td className="text-muted-foreground">
+                          {e.lunchMinutes > 0 ? `${e.lunchMinutes} min` : "—"}
+                        </td>
+                        <td>
+                          {e.isRemote ? (
+                            <span className="inline-flex items-center gap-1 text-primary">
+                              <Globe className="h-3.5 w-3.5" /> yes
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">no</span>
+                          )}
+                        </td>
+                        <td className="text-muted-foreground">{e.notes ?? "—"}</td>
+                        {isAdmin && (
+                          <td className="text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 gap-1.5 px-2 text-xs"
+                              onClick={() => setEditTarget(e)}
+                              title="Edit attendance"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Edit
+                            </Button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
+
+      <EditAttendanceDialog
+        open={!!editTarget}
+        onOpenChange={(o) => {
+          if (!o) setEditTarget(null);
+        }}
+        entry={editTarget}
+      />
     </PageContainer>
   );
 }

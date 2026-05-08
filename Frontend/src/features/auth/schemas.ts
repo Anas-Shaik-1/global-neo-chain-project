@@ -83,8 +83,20 @@ export type TwoFactorDisableValues = z.infer<typeof TwoFactorDisableSchema>;
 
 // Public self-registration -------------------------------------------------
 
-const objectIdRegex = /^[0-9a-fA-F]{24}$/;
-const phoneRegex = /^[+\d][\d\s\-()]{6,24}$/;
+// Indian mobile number — 10 digits starting with 6/7/8/9. The backend
+// prepends `+91` before storage; users only see the 10-digit subscriber
+// part in the form.
+const indianMobileRegex = /^[6-9]\d{9}$/;
+
+// Mirror of the backend `uploadAvatar` mime allowlist + 2 MB cap.
+const AVATAR_MIME_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/webp",
+  "image/gif",
+];
+const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 
 export const RegisterSchema = z
   .object({
@@ -94,14 +106,19 @@ export const RegisterSchema = z
     confirmPassword: z.string().min(1, "Please confirm your password"),
     phone: z
       .string()
-      .regex(phoneRegex, "Enter a valid phone number")
+      .regex(indianMobileRegex, "Enter a valid 10-digit mobile number")
       .optional()
       .or(z.literal("")),
-    departmentId: z
-      .string()
-      .regex(objectIdRegex, "Invalid department")
-      .optional()
-      .or(z.literal("")),
+    // Profile picture is mandatory at registration. We validate type + size
+    // here so users get instant feedback; the backend re-runs the same checks.
+    avatar: z
+      .instanceof(File, { message: "Profile picture is required" })
+      .refine((f) => AVATAR_MIME_TYPES.includes(f.type), {
+        message: "PNG, JPEG, WebP, or GIF only",
+      })
+      .refine((f) => f.size <= AVATAR_MAX_BYTES, {
+        message: "File must be 2 MB or smaller",
+      }),
   })
   .refine((d) => d.password === d.confirmPassword, {
     path: ["confirmPassword"],

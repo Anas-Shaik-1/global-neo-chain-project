@@ -169,9 +169,12 @@ export function TaskDetailDialog({ open, onOpenChange, task }: Props) {
 
   const subtaskForm = useForm<AddSubtaskValues>({
     resolver: zodResolver(AddSubtaskSchema),
-    defaultValues: { title: "" },
+    defaultValues: { title: "", assigneeId: "" },
   });
 
+  // Only reset on identity change of the task being viewed — refetches that
+  // return the same task id (e.g. background revalidations after a comment
+  // is posted) shouldn't wipe in-progress edits to the details form.
   useEffect(() => {
     if (!task) return;
     detailsForm.reset({
@@ -185,10 +188,10 @@ export function TaskDetailDialog({ open, onOpenChange, task }: Props) {
     setError(null);
     commentForm.reset({ body: "" });
     setCommentError(null);
-    subtaskForm.reset({ title: "" });
+    subtaskForm.reset({ title: "", assigneeId: "" });
     setSubtaskError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [task]);
+  }, [task?.id]);
 
   function onSave(values: UpdateTaskValues) {
     if (!task) return;
@@ -225,9 +228,13 @@ export function TaskDetailDialog({ open, onOpenChange, task }: Props) {
         projectId: task.projectId,
         title: values.title.trim(),
         parentTaskId: task.id,
+        assigneeId:
+          values.assigneeId && values.assigneeId.length > 0
+            ? values.assigneeId
+            : null,
       },
       {
-        onSuccess: () => subtaskForm.reset({ title: "" }),
+        onSuccess: () => subtaskForm.reset({ title: "", assigneeId: "" }),
         onError: (err) => setSubtaskError((err as Error).message ?? "Failed to add subtask"),
       },
     );
@@ -346,6 +353,7 @@ export function TaskDetailDialog({ open, onOpenChange, task }: Props) {
                             <SelectItem value="LOW">Low</SelectItem>
                             <SelectItem value="MEDIUM">Medium</SelectItem>
                             <SelectItem value="HIGH">High</SelectItem>
+                            <SelectItem value="ENHANCEMENT">Enhancement</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
@@ -389,7 +397,12 @@ export function TaskDetailDialog({ open, onOpenChange, task }: Props) {
                       <FormItem>
                         <FormLabel>Due date</FormLabel>
                         <FormControl>
-                          <Input type="date" {...field} value={field.value ?? ""} />
+                          <Input
+                            type="date"
+                            min={new Date().toISOString().slice(0, 10)}
+                            {...field}
+                            value={field.value ?? ""}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -508,7 +521,7 @@ export function TaskDetailDialog({ open, onOpenChange, task }: Props) {
             <Form {...subtaskForm}>
               <form
                 onSubmit={subtaskForm.handleSubmit(onAddSubtask)}
-                className="mt-4 flex items-start gap-2"
+                className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-start"
                 noValidate
               >
                 <FormField
@@ -524,6 +537,37 @@ export function TaskDetailDialog({ open, onOpenChange, task }: Props) {
                           {...field}
                         />
                       </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={subtaskForm.control}
+                  name="assigneeId"
+                  render={({ field }) => (
+                    <FormItem className="sm:w-48">
+                      <Select
+                        // Empty-string sentinel is invalid for Radix Select;
+                        // wrap to "__none__" so "Unassigned" renders cleanly.
+                        value={field.value && field.value.length > 0 ? field.value : "__none__"}
+                        onValueChange={(v) =>
+                          field.onChange(v === "__none__" ? "" : v)
+                        }
+                      >
+                        <FormControl>
+                          <SelectTrigger aria-label="Assign to">
+                            <SelectValue placeholder="Unassigned" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="__none__">Unassigned</SelectItem>
+                          {(employees.data?.items ?? []).map((u) => (
+                            <SelectItem key={u.id} value={u.id}>
+                              {u.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}

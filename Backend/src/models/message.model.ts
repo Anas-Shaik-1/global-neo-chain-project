@@ -28,6 +28,22 @@ const messageSchema = new Schema(
 // Compound index for paginated reads of a conversation's history.
 messageSchema.index({ conversationId: 1, createdAt: -1 });
 
+// A message must have either a non-empty body or an attachment.
+messageSchema.pre("validate", function (next) {
+  const hasBody = typeof this.body === "string" && this.body.length > 0;
+  const hasAttachment = Boolean(this.attachmentUrl);
+  if (!hasBody && !hasAttachment) {
+    return next(
+      this.invalidate(
+        "body",
+        "Message must have a non-empty body or an attachment",
+        this.body,
+      ) as unknown as Error,
+    );
+  }
+  next();
+});
+
 export type MessageDoc = InferSchemaType<typeof messageSchema> & {
   _id: Types.ObjectId;
 };

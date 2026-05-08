@@ -44,7 +44,7 @@ export type CreateProjectValues = z.infer<typeof CreateProjectSchema>;
 export const CreateTaskSchema = z.object({
   title: taskTitleSchema,
   description: taskDescriptionSchema,
-  priority: z.enum(["LOW", "MEDIUM", "HIGH"]),
+  priority: z.enum(["LOW", "MEDIUM", "HIGH", "ENHANCEMENT"]),
   assigneeId: objectIdOrEmpty,
   dueDate: z
     .string()
@@ -61,7 +61,7 @@ export const UpdateTaskSchema = z.object({
   title: taskTitleSchema,
   description: taskDescriptionSchema,
   status: z.enum(["TODO", "IN_PROGRESS", "DONE"]),
-  priority: z.enum(["LOW", "MEDIUM", "HIGH"]),
+  priority: z.enum(["LOW", "MEDIUM", "HIGH", "ENHANCEMENT"]),
   assigneeId: objectIdOrEmpty,
   dueDate: z
     .string()
@@ -82,7 +82,20 @@ export const AddCommentSchema = z.object({
 });
 export type AddCommentValues = z.infer<typeof AddCommentSchema>;
 
+// 24-char hex Mongo ObjectId. Empty string = "leave unassigned".
+const optionalObjectId = z
+  .string()
+  .regex(/^[a-f\d]{24}$/i, "Invalid id")
+  .optional()
+  .or(z.literal(""));
+
 export const AddSubtaskSchema = z.object({
   title: taskTitleSchema,
+  /**
+   * Subtasks can be assigned to any teammate at creation time so dependent
+   * work can be parked on the right person without a follow-up edit. Empty
+   * string means "leave unassigned".
+   */
+  assigneeId: optionalObjectId,
 });
 export type AddSubtaskValues = z.infer<typeof AddSubtaskSchema>;

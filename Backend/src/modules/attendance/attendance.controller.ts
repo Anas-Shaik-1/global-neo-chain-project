@@ -69,3 +69,62 @@ export async function getEmployeeMonth(req: Request, res: Response, next: NextFu
     next(err);
   }
 }
+
+export async function getPresentToday(req: Request, res: Response, next: NextFunction) {
+  try {
+    if (!req.user) throw new UnauthorizedError();
+    const result = await svc.presentToday();
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function patchAttendanceEntry(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    if (!req.user) throw new UnauthorizedError();
+    const id = req.params.id as string;
+    const body = (req.validated ?? req.body) as {
+      clockIn?: string;
+      clockOut?: string | null;
+      lunchStart?: string | null;
+      lunchEnd?: string | null;
+      isRemote?: boolean;
+      isAbsent?: boolean;
+      notes?: string | null;
+      reason?: string;
+    };
+    const result = await svc.editEntryAsAdmin(id, req.user.id, {
+      clockIn: body.clockIn ? new Date(body.clockIn) : undefined,
+      clockOut:
+        body.clockOut === undefined
+          ? undefined
+          : body.clockOut === null
+            ? null
+            : new Date(body.clockOut),
+      lunchStart:
+        body.lunchStart === undefined
+          ? undefined
+          : body.lunchStart === null
+            ? null
+            : new Date(body.lunchStart),
+      lunchEnd:
+        body.lunchEnd === undefined
+          ? undefined
+          : body.lunchEnd === null
+            ? null
+            : new Date(body.lunchEnd),
+      isRemote: body.isRemote,
+      isAbsent: body.isAbsent,
+      notes: body.notes,
+      reason: body.reason,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}

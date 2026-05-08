@@ -1,6 +1,12 @@
 import type { Request, Response, NextFunction } from "express";
+import { Types } from "mongoose";
 import * as svc from "./chat.service.js";
-import { UnauthorizedError, ValidationError } from "../../lib/errors.js";
+import {
+  ForbiddenError,
+  UnauthorizedError,
+  ValidationError,
+} from "../../lib/errors.js";
+import { Conversation } from "../../models/conversation.model.js";
 import { getChatNamespace } from "../../realtime/index.js";
 
 function requireUser(req: Request) {
@@ -34,6 +40,34 @@ export async function postOpenConversation(req: Request, res: Response, next: Ne
     const body = req.validated as { otherUserId: string };
     const out = await svc.openConversation(me.id, body.otherUserId);
     res.json(out);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function postMarkConversationRead(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const me = requireUser(req);
+    const id = req.params.id as string;
+    if (!/^[0-9a-fA-F]{24}$/.test(id)) {
+      throw new ValidationError("id must be a 24-char hex ObjectId");
+    }
+    const out = await svc.markConversationRead(me.id, id);
+    res.json(out);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getUnreadTotal(req: Request, res: Response, next: NextFunction) {
+  try {
+    const me = requireUser(req);
+    const count = await svc.getTotalUnread(me.id);
+    res.json({ count });
   } catch (err) {
     next(err);
   }
@@ -89,6 +123,24 @@ export async function postMessageWithAttachment(
   try {
     const me = requireUser(req);
     const id = req.params.id as string;
+    // Defense-in-depth: confirm the requester is a participant before we touch
+    // storage. Multer (route-level) has already buffered the bytes by the time
+    // we get here, so we can't avoid the upload itself — fully avoiding it
+    // requires moving this check into a route-level middleware in
+    // chat.routes.ts ahead of `uploadChatAttachment`. We can't edit
+    // chat.routes.ts from here, so this is the best we can do for now.
+    // TODO(attachment-preflight): add a participant-check middleware in
+    // chat.routes.ts before `uploadChatAttachment` so non-participants don't
+    // even get to upload bytes.
+    if (!Types.ObjectId.isValid(id)) {
+      throw new ValidationError("id must be a 24-char hex ObjectId");
+    }
+    const isParticipant = await Conversation.exists({
+      _id: id,
+      participantIds: me.id,
+    });
+    if (!isParticipant) throw new ForbiddenError();
+
     const file = req.file;
     if (!file) throw new ValidationError("No file uploaded");
     const text =

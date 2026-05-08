@@ -24,14 +24,26 @@ import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/common/PageHeader";
 import { PageContainer } from "@/components/common/PageContainer";
 import { StatusBadge } from "@/components/common/StatusBadge";
+import { Pagination } from "@/components/common/Pagination";
+import { usePagination } from "@/hooks/usePagination";
 import { useAppSelector } from "@/app/hooks";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   useCandidates,
   useApproveHr,
   useApproveAdmin,
   useRejectCandidate,
+  useDepartmentsList,
   type PublicProfile,
 } from "../api/hooks";
+
+const NO_DEPT = "__none__";
 
 type Stage = "hr" | "admin";
 
@@ -74,6 +86,7 @@ export function CandidatesPage() {
 function CandidatesTable({ stage }: { stage: Stage }) {
   const { data, isLoading } = useCandidates({ stage });
   const [rejectTarget, setRejectTarget] = useState<PublicProfile | null>(null);
+  const paginated = usePagination(data?.items ?? [], 10);
 
   return (
     <Card>
@@ -83,29 +96,53 @@ function CandidatesTable({ stage }: { stage: Stage }) {
         ) : data.items.length === 0 ? (
           <EmptyQueue stage={stage} />
         ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="px-2">Applicant</TableHead>
-                  <TableHead className="hidden px-2 sm:table-cell">Email</TableHead>
-                  <TableHead className="hidden px-2 md:table-cell">Department</TableHead>
-                  <TableHead className="hidden px-2 lg:table-cell">Applied</TableHead>
-                  <TableHead className="px-2 text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.items.map((c) => (
-                  <CandidateRow
-                    key={c.id}
-                    candidate={c}
-                    stage={stage}
-                    onReject={() => setRejectTarget(c)}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          <>
+            {/* Mobile: card stack */}
+            <div className="space-y-3 md:hidden">
+              {paginated.items.map((c) => (
+                <CandidateCard
+                  key={c.id}
+                  candidate={c}
+                  stage={stage}
+                  onReject={() => setRejectTarget(c)}
+                />
+              ))}
+            </div>
+
+            {/* Desktop: table */}
+            <div className="hidden overflow-x-auto md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="px-2">Applicant</TableHead>
+                    <TableHead className="px-2">Email</TableHead>
+                    <TableHead className="hidden px-2 md:table-cell">Department</TableHead>
+                    <TableHead className="hidden px-2 lg:table-cell">Applied</TableHead>
+                    <TableHead className="px-2 text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginated.items.map((c) => (
+                    <CandidateRow
+                      key={c.id}
+                      candidate={c}
+                      stage={stage}
+                      onReject={() => setRejectTarget(c)}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            <Pagination
+              page={paginated.page}
+              pageSize={paginated.pageSize}
+              totalPages={paginated.totalPages}
+              totalItems={paginated.totalItems}
+              onPageChange={paginated.setPage}
+              onPageSizeChange={paginated.setPageSize}
+            />
+          </>
         )}
 
         {rejectTarget && (
@@ -116,6 +153,123 @@ function CandidatesTable({ stage }: { stage: Stage }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Mobile-first card layout for a candidate row. Mirrors the desktop table
+ * columns: applicant identity + status badge at the top, secondary metadata
+ * (email · department · applied date) in the middle, full-width action
+ * buttons at the bottom for easy thumb reach.
+ */
+function CandidateCard({
+  candidate,
+  stage,
+  onReject,
+}: {
+  candidate: PublicProfile;
+  stage: Stage;
+  onReject: () => void;
+}) {
+  const approveHr = useApproveHr(candidate.id);
+  const approveAdmin = useApproveAdmin(candidate.id);
+  const showDeptPicker = stage === "hr";
+  const departmentsQ = useDepartmentsList({ limit: 100 });
+  const [selectedDept, setSelectedDept] = useState<string>(
+    candidate.departmentId ?? NO_DEPT,
+  );
+  const initials = candidate.name
+    .split(" ")
+    .map((s) => s[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  const applied = candidate.createdAt
+    ? new Date(candidate.createdAt).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "—";
+  const onApprove = () => {
+    if (stage === "hr") {
+      approveHr.mutate({
+        departmentId: selectedDept === NO_DEPT ? null : selectedDept,
+      });
+    } else {
+      approveAdmin.mutate();
+    }
+  };
+  const isApproving = stage === "hr" ? approveHr.isPending : approveAdmin.isPending;
+
+  return (
+    <div className="rounded-lg border border-border/60 bg-card/40 p-4 shadow-sm">
+      <div className="flex items-start gap-3">
+        <Avatar className="h-10 w-10 shrink-0">
+          <AvatarFallback className="text-xs font-semibold">{initials}</AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="truncate text-base font-semibold text-foreground">
+              {candidate.name}
+            </span>
+            <StatusBadge tone={stage === "hr" ? "warn" : "info"}>
+              {stage === "hr" ? "Pending HR" : "Pending Admin"}
+            </StatusBadge>
+          </div>
+          <div className="mt-1 truncate font-mono text-xs text-muted-foreground">
+            {candidate.email}
+          </div>
+        </div>
+      </div>
+
+      <dl className="mt-3 grid grid-cols-2 gap-3 border-t border-border/40 pt-3 text-sm">
+        <div>
+          <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">
+            Department
+          </dt>
+          <dd className="mt-0.5 text-foreground">
+            {showDeptPicker ? (
+              <Select value={selectedDept} onValueChange={setSelectedDept}>
+                <SelectTrigger className="h-9 w-full">
+                  <SelectValue placeholder="Choose…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_DEPT}>Unassigned</SelectItem>
+                  {(departmentsQ.data?.items ?? []).map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              candidate.departmentName ?? "—"
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">
+            Applied
+          </dt>
+          <dd className="mt-0.5 text-foreground">{applied}</dd>
+        </div>
+      </dl>
+
+      <div className="mt-3 flex gap-2 border-t border-border/40 pt-3">
+        <Button
+          size="sm"
+          className="flex-1"
+          onClick={onApprove}
+          disabled={isApproving}
+        >
+          {isApproving ? "Approving…" : "Approve"}
+        </Button>
+        <Button size="sm" variant="outline" className="flex-1" onClick={onReject}>
+          Reject
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -146,6 +300,13 @@ function CandidateRow({
 }) {
   const approveHr = useApproveHr(candidate.id);
   const approveAdmin = useApproveAdmin(candidate.id);
+  // Department picker is only meaningful at HR stage — once the candidate is
+  // in the admin queue HR has already placed them.
+  const showDeptPicker = stage === "hr";
+  const departmentsQ = useDepartmentsList({ limit: 100 });
+  const [selectedDept, setSelectedDept] = useState<string>(
+    candidate.departmentId ?? NO_DEPT,
+  );
   const initials = candidate.name
     .split(" ")
     .map((s) => s[0])
@@ -161,8 +322,13 @@ function CandidateRow({
     : "—";
 
   const onApprove = () => {
-    if (stage === "hr") approveHr.mutate();
-    else approveAdmin.mutate();
+    if (stage === "hr") {
+      approveHr.mutate({
+        departmentId: selectedDept === NO_DEPT ? null : selectedDept,
+      });
+    } else {
+      approveAdmin.mutate();
+    }
   };
   const isApproving = stage === "hr" ? approveHr.isPending : approveAdmin.isPending;
 
@@ -185,7 +351,23 @@ function CandidateRow({
         {candidate.email}
       </TableCell>
       <TableCell className="hidden px-2 py-3 text-muted-foreground md:table-cell">
-        {candidate.departmentName ?? "—"}
+        {showDeptPicker ? (
+          <Select value={selectedDept} onValueChange={setSelectedDept}>
+            <SelectTrigger className="h-8 w-[160px]">
+              <SelectValue placeholder="Choose…" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_DEPT}>Unassigned</SelectItem>
+              {(departmentsQ.data?.items ?? []).map((d) => (
+                <SelectItem key={d.id} value={d.id}>
+                  {d.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          (candidate.departmentName ?? "—")
+        )}
       </TableCell>
       <TableCell className="hidden px-2 py-3 text-muted-foreground lg:table-cell">
         {applied}

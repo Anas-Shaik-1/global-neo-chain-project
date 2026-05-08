@@ -5,6 +5,8 @@ import {
   type NotificationKind,
 } from "../../models/notification.model.js";
 import { NotFoundError } from "../../lib/errors.js";
+import { logger } from "../../lib/logger.js";
+import { getChatNamespace } from "../../realtime/index.js";
 
 export interface NotificationResponseShape {
   id: string;
@@ -39,8 +41,27 @@ export interface NotifyInput {
 }
 
 /**
- * Persist a single notification for a user. Returns the created entry so
- * callers can chain (e.g. websocket fanout). Used by other services as a
+ * Push a "notification:new" event to every connected socket the user owns
+ * (across tabs / devices) so the FE can refresh without polling. Best-effort:
+ * if the chat namespace isn't attached (e.g., during early boot or in a unit
+ * test without sockets), we no-op.
+ */
+function pushRealtime(
+  userId: string,
+  payload: NotificationResponseShape,
+): void {
+  try {
+    const ns = getChatNamespace();
+    if (!ns) return;
+    ns.to(`user:${userId}`).emit("notification:new", payload);
+  } catch (err) {
+    logger.warn({ err, userId }, "notifications realtime push failed");
+  }
+}
+
+/**
+ * Persist a single notification for a user and emit a realtime event so any
+ * connected sockets see it immediately. Used by other services as a
  * fire-and-forget; callers should swallow errors at the call site so the
  * primary business flow keeps succeeding.
  */
@@ -56,7 +77,36 @@ export async function notify(
     link: input.link ?? null,
     readAt: null,
   });
-  return denormalize(created);
+  const payload = denormalize(created);
+  pushRealtime(userId, payload);
+  return payload;
+}
+
+/**
+ * Bulk variant: one Mongo insertMany + per-user realtime push. Use when
+ * fanning out the SAME notification to many recipients (e.g. notify all
+ * admins of a new candidate). Skips empty arrays. De-dupes ids defensively
+ * so a duplicated `userIds` doesn't create two records for the same person.
+ */
+export async function notifyMany(
+  userIds: string[],
+  input: NotifyInput,
+): Promise<NotificationResponseShape[]> {
+  const unique = Array.from(new Set(userIds.filter(Boolean)));
+  if (unique.length === 0) return [];
+  const docs = await Notification.insertMany(
+    unique.map((id) => ({
+      userId: new Types.ObjectId(id),
+      kind: input.kind,
+      title: input.title,
+      body: input.body ?? null,
+      link: input.link ?? null,
+      readAt: null,
+    })),
+  );
+  const out = docs.map((d) => denormalize(d as NotificationDoc));
+  for (const payload of out) pushRealtime(payload.userId, payload);
+  return out;
 }
 
 export interface ListMineInput {

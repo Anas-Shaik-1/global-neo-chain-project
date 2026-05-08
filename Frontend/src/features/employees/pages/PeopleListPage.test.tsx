@@ -7,11 +7,18 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { authSlice, sessionEstablished } from "@/features/auth/authSlice";
 import { uiSlice } from "@/features/ui/uiSlice";
+import { presenceSlice } from "@/features/chat/presenceSlice";
 import { setupApiClient, getApi } from "@/api/axios";
 import { PeopleListPage } from "./PeopleListPage";
 
 function build() {
-  const store = configureStore({ reducer: { auth: authSlice.reducer, ui: uiSlice.reducer } });
+  const store = configureStore({
+    reducer: {
+      auth: authSlice.reducer,
+      ui: uiSlice.reducer,
+      presence: presenceSlice.reducer,
+    },
+  });
   store.dispatch(sessionEstablished({
     accessToken: "t",
     user: { id: "u1", email: "u@b.com", name: "U", role: "HR", isProjectManager: false, isVerified: true },
@@ -45,8 +52,11 @@ describe("PeopleListPage", () => {
         </QueryClientProvider>
       </Provider>,
     );
-    expect(await screen.findByText("Alice")).toBeInTheDocument();
-    expect(screen.getByText("Bob")).toBeInTheDocument();
+    // The page renders both a mobile card view and a desktop table view —
+    // jsdom doesn't apply the responsive Tailwind classes, so each name
+    // appears twice. Use *AllByText to assert presence regardless.
+    expect((await screen.findAllByText("Alice")).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Bob").length).toBeGreaterThan(0);
   });
 
   it("HR sees the Review candidates button", async () => {

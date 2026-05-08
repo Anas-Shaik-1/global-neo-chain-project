@@ -21,8 +21,12 @@ import { expensesRouter } from "./modules/expenses/expenses.routes.js";
 import { payrollRouter } from "./modules/payroll/payroll.routes.js";
 import { chatRouter } from "./modules/chat/chat.routes.js";
 import { callsRouter } from "./modules/calls/calls.routes.js";
+import { bugsRouter } from "./modules/bugs/bugs.routes.js";
+import { feedbackRouter } from "./modules/feedback/feedback.routes.js";
+import { calendarRouter } from "./modules/calendar/calendar.routes.js";
 import { dashboardRouter } from "./modules/dashboard/dashboard.routes.js";
 import { notificationsRouter } from "./modules/notifications/notifications.routes.js";
+import { contactRouter } from "./modules/contact/contact.routes.js";
 import "./modules/auth/auth.schema.js";
 import "./modules/authExtensions/authExtensions.schema.js";
 import "./modules/registration/registration.schema.js";
@@ -34,12 +38,23 @@ import "./modules/expenses/expenses.schema.js";
 import "./modules/payroll/payroll.schema.js";
 import "./modules/chat/chat.schema.js";
 import "./modules/calls/calls.schema.js";
+import "./modules/bugs/bugs.schema.js";
+import "./modules/feedback/feedback.schema.js";
+import "./modules/calendar/calendar.schema.js";
 import "./modules/dashboard/dashboard.schema.js";
 import "./modules/notifications/notifications.schema.js";
+import "./modules/contact/contact.schema.js";
 import { buildOpenApiDocument } from "./openapi/spec.js";
 
 export function createApp() {
   const app = express();
+
+  // Honor X-Forwarded-For exactly one hop when running behind a reverse
+  // proxy / load balancer (set TRUST_PROXY=1 in that env). Without this,
+  // express-rate-limit keys every request by the proxy IP and effectively
+  // shares one bucket across all clients.
+  const trustProxy = process.env.TRUST_PROXY;
+  app.set("trust proxy", trustProxy ? 1 : false);
 
   app.use(helmet());
   app.use(cors({ origin: config.FRONTEND_ORIGIN, credentials: true }));
@@ -48,9 +63,20 @@ export function createApp() {
   app.use(pinoHttp({ logger }));
   app.use(globalLimiter);
 
-  // Static file serving for uploaded avatars/resumes
+  // Static file serving for uploaded avatars/resumes/bug screenshots/etc.
+  // We explicitly stamp `Cross-Origin-Resource-Policy: cross-origin` here
+  // because Helmet's app-wide default is `same-origin`, which blocks the
+  // frontend (different origin in dev) from rendering <img src> against
+  // these URLs. Inline /files/* assets are public-by-URL anyway.
   const uploadsDir = path.resolve(process.env.UPLOADS_DIR ?? "uploads");
-  app.use("/files", express.static(uploadsDir, { fallthrough: false }));
+  app.use(
+    "/files",
+    (_req, res, next) => {
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+      next();
+    },
+    express.static(uploadsDir, { fallthrough: false }),
+  );
 
   const openapi = buildOpenApiDocument();
   app.get("/openapi.json", (_req, res) => res.json(openapi));
@@ -76,6 +102,12 @@ export function createApp() {
   app.use("/calls", callsRouter);
   app.use("/dashboard", dashboardRouter);
   app.use("/notifications", notificationsRouter);
+  app.use("/bugs", bugsRouter);
+  app.use("/feedback", feedbackRouter);
+  app.use("/calendar", calendarRouter);
+  // Public contact-form endpoint — unauthenticated. Has its own tight rate
+  // limit inside the router (5/15min/IP) and a honeypot field.
+  app.use("/contact", contactRouter);
 
   app.use(errorHandler);
   return app;

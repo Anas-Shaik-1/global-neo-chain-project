@@ -54,10 +54,9 @@ describe("attendance.service", () => {
     await expect(clockOut(userId)).rejects.toBeInstanceOf(NotFoundError);
   });
 
-  it("clockOut within 1hr throws ConflictError", async () => {
+  it("clockOut within 1hr is allowed (manual checkout has no minimum)", async () => {
     const { Attendance } = await import("../../models/attendance.model.js");
     const { clockOut } = await import("./attendance.service.js");
-    const { ConflictError } = await import("../../lib/errors.js");
     const userId = new Types.ObjectId();
     const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
     const now = new Date();
@@ -68,7 +67,8 @@ describe("attendance.service", () => {
       clockIn: tenMinAgo,
       clockOut: null,
     });
-    await expect(clockOut(userId.toString())).rejects.toBeInstanceOf(ConflictError);
+    const out = await clockOut(userId.toString());
+    expect(out.clockOut).not.toBeNull();
   });
 
   it("clockOut after 1hr+ subtracts lunch break from durationMinutes", async () => {

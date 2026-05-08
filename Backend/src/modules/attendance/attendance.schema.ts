@@ -21,6 +21,7 @@ export const AttendanceEntry = z
     lunchMinutes: z.number().int().nonnegative(),
     durationMinutes: z.number().int().nonnegative().nullable(),
     isRemote: z.boolean(),
+    isAbsent: z.boolean(),
     notes: z.string().nullable().optional(),
     createdAt: z.string().datetime(),
   })
@@ -33,6 +34,43 @@ export const AttendanceMonthResponse = z
     daysWorked: z.number().int().nonnegative(),
   })
   .openapi("AttendanceMonthResponse");
+
+export const PresentTodayPerson = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    jobTitle: z.string().nullable(),
+    avatarUrl: z.string().nullable(),
+    clockIn: z.string().datetime(),
+    isRemote: z.boolean(),
+    hasClockedOut: z.boolean(),
+  })
+  .openapi("PresentTodayPerson");
+
+/** Active employees who haven't clocked in today — same shape as the
+ *  present roster minus the timing/remote bits, since the only relevant
+ *  fact about an absentee is who they are. */
+export const NotClockedInPerson = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    jobTitle: z.string().nullable(),
+    avatarUrl: z.string().nullable(),
+  })
+  .openapi("NotClockedInPerson");
+
+export const PresentTodayResponse = z
+  .object({
+    date: z.string(),
+    presentCount: z.number().int().nonnegative(),
+    remoteCount: z.number().int().nonnegative(),
+    notClockedInCount: z.number().int().nonnegative(),
+    people: z.array(PresentTodayPerson),
+    /** Active employees who have no attendance entry today. Drives the
+     *  "Awaiting clock-in" panel on the dashboard PresentToday widget. */
+    notClockedIn: z.array(NotClockedInPerson),
+  })
+  .openapi("PresentTodayResponse");
 
 export const ClockInBody = z
   .object({
@@ -48,6 +86,31 @@ export const ClockOutBody = z
   .openapi("ClockOutBody");
 
 export const LunchBody = z.object({}).openapi("LunchBody");
+
+/**
+ * Admin-only payload to amend an attendance entry. Times are accepted as
+ * either ISO strings or null (to clear). At least one editable field must be
+ * present — the service checks; the schema doesn't refine to keep the OpenAPI
+ * shape readable.
+ */
+export const AdminEditAttendanceBody = z
+  .object({
+    clockIn: z.string().datetime().optional(),
+    clockOut: z.string().datetime().nullable().optional(),
+    lunchStart: z.string().datetime().nullable().optional(),
+    lunchEnd: z.string().datetime().nullable().optional(),
+    isRemote: z.boolean().optional(),
+    notes: z.string().max(500).nullable().optional(),
+    /**
+     * Mark / unmark the day as absent. When true, all timings collapse to
+     * the entry-date midnight (duration 0). When toggled back to false the
+     * admin must supply fresh clockIn / clockOut values in the same patch.
+     */
+    isAbsent: z.boolean().optional(),
+    /** Optional reason — surfaced verbatim in the notification to the employee. */
+    reason: z.string().max(200).optional(),
+  })
+  .openapi("AdminEditAttendanceBody");
 
 const json = (schema: z.ZodTypeAny) => ({ content: { "application/json": { schema } } });
 const ErrorRef = z.object({ code: z.string(), message: z.string() }).openapi("AttendanceErrorRef");
@@ -133,5 +196,32 @@ registry.registerPath({
   responses: {
     200: { description: "OK", ...json(AttendanceMonthResponse) },
     403: { description: "Forbidden", ...json(ErrorRef) },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/attendance/today/present",
+  tags: ["attendance"],
+  security: sec,
+  responses: {
+    200: { description: "OK", ...json(PresentTodayResponse) },
+  },
+});
+
+registry.registerPath({
+  method: "patch",
+  path: "/attendance/{id}",
+  tags: ["attendance"],
+  security: sec,
+  request: {
+    params: z.object({ id: objectIdString }),
+    body: { content: { "application/json": { schema: AdminEditAttendanceBody } } },
+  },
+  responses: {
+    200: { description: "Updated entry", ...json(AttendanceEntry) },
+    400: { description: "No editable fields", ...json(ErrorRef) },
+    403: { description: "Admin only", ...json(ErrorRef) },
+    404: { description: "Entry not found", ...json(ErrorRef) },
   },
 });

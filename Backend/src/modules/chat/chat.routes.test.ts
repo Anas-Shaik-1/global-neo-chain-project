@@ -149,10 +149,14 @@ describe("/chat", () => {
     const res = await request(app)
       .post(`/chat/conversations/${convo.body.id}/messages/attachment`)
       .set("Authorization", `Bearer ${a.token}`)
-      .attach("file", Buffer.from("PNGDATA"), {
-        filename: "screenshot.png",
-        contentType: "image/png",
-      })
+      .attach(
+        "file",
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x00]),
+        {
+          filename: "screenshot.png",
+          contentType: "image/png",
+        }
+      )
       .field("body", "look at this");
     expect(res.status).toBe(201);
     expect(res.body.body).toBe("look at this");
@@ -160,7 +164,7 @@ describe("/chat", () => {
     expect(res.body.attachmentUrl).toMatch(/\/files\/chat\//);
     expect(res.body.attachmentName).toBe("screenshot.png");
     expect(res.body.attachmentMimeType).toBe("image/png");
-    expect(res.body.attachmentSize).toBe(Buffer.from("PNGDATA").length);
+    expect(res.body.attachmentSize).toBe(12);
   });
 
   it("POST /chat/groups 201 creates a group with all members", async () => {

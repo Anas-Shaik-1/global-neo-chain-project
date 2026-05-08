@@ -3,12 +3,17 @@ import MockAdapter from "axios-mock-adapter";
 import { configureStore } from "@reduxjs/toolkit";
 import { authSlice } from "./authSlice";
 import { uiSlice } from "@/features/ui/uiSlice";
+import { presenceSlice } from "@/features/chat/presenceSlice";
 import { setupApiClient, getApi } from "@/api/axios";
 import { loginThunk, logoutThunk, bootstrapSessionThunk } from "./authThunks";
 
 function buildStore() {
   const store = configureStore({
-    reducer: { auth: authSlice.reducer, ui: uiSlice.reducer },
+    reducer: {
+      auth: authSlice.reducer,
+      ui: uiSlice.reducer,
+      presence: presenceSlice.reducer,
+    },
   });
   setupApiClient(store, "http://api");
   return store;

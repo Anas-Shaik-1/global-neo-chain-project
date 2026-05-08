@@ -16,7 +16,11 @@ export function SearchBar({ value, onChange, placeholder = "Search…", classNam
     <div className={cn("relative", className)}>
       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
       <Input
-        type="search"
+        // `type="text"` (not "search") so the browser's native clear button
+        // doesn't render alongside our own — they were stacking and the
+        // native red × was visually competing with the lucide one we draw.
+        type="text"
+        role="searchbox"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}

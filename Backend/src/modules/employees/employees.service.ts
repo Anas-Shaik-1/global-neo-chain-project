@@ -10,10 +10,13 @@ import { Department } from "../../models/department.model.js";
 import { Position } from "../../models/position.model.js";
 import { ConflictError, NotFoundError, ForbiddenError } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
+import { toIndianE164 } from "../../lib/phone.js";
 import { requestEmailVerification } from "../authExtensions/authExtensions.service.js";
 
 interface PublicShape {
   id: string;
+  /** Human-readable EMP-YYYY-NNNN id stamped at activation. Null until then. */
+  employeeId: string | null;
   email: string;
   name: string;
   role: Role;
@@ -27,6 +30,16 @@ interface PublicShape {
   departmentName?: string | null;
   phone?: string | null;
   avatarUrl?: string | null;
+  /**
+   * Cloudinary-driven responsive avatar URLs. All three may be null when
+   * the user uses the local-storage driver — FE callers should fall back
+   * to `avatarUrl` in that case.
+   */
+  avatarVariants?: {
+    small: string | null;
+    medium: string | null;
+    large: string | null;
+  } | null;
   bio?: string | null;
   createdAt?: Date;
 }
@@ -38,6 +51,10 @@ interface FullShape extends PublicShape {
   employmentType?: EmploymentType | null;
   emergencyContact?: { name?: string; phone?: string; relationship?: string } | null;
   resumeUrl?: string | null;
+  // Phone-verification status. Intentionally only on FullShape — colleagues
+  // viewing PublicProfile don't need to know whether someone has verified
+  // their personal phone.
+  isPhoneVerified: boolean;
   // Approval pipeline audit trail. `approvalNotes` is HR/Admin-only on read
   // because rejection rationale shouldn't be visible to other employees.
   approvalNotes?: string | null;
@@ -52,6 +69,7 @@ export function toPublicProfile(u: UserDoc, departmentName: string | null): Publ
   const d = u as unknown as { createdAt?: Date };
   return {
     id: u._id.toString(),
+    employeeId: u.employeeId ?? null,
     email: u.email,
     name: u.name,
     role: u.role,
@@ -63,6 +81,13 @@ export function toPublicProfile(u: UserDoc, departmentName: string | null): Publ
     departmentName,
     phone: u.phone ?? null,
     avatarUrl: u.avatarUrl ?? null,
+    avatarVariants: u.avatarVariants
+      ? {
+          small: u.avatarVariants.small ?? null,
+          medium: u.avatarVariants.medium ?? null,
+          large: u.avatarVariants.large ?? null,
+        }
+      : null,
     bio: u.bio ?? null,
     createdAt: d.createdAt,
   };
@@ -84,6 +109,7 @@ export function toFullProfile(u: UserDoc, departmentName: string | null): FullSh
         }
       : null,
     resumeUrl: u.resumeUrl ?? null,
+    isPhoneVerified: Boolean(u.isPhoneVerified),
     approvalNotes: u.approvalNotes ?? null,
     hrApprovedAt: u.hrApprovedAt ?? null,
     adminApprovedAt: u.adminApprovedAt ?? null,
@@ -102,6 +128,33 @@ async function loadDepartmentName(departmentId: Types.ObjectId | null | undefine
   if (!departmentId) return null;
   const d = await Department.findById(departmentId).select("name").lean();
   return d?.name ?? null;
+}
+
+/**
+ * Allocates the next free `EMP-<YYYY>-<NNNN>` identifier for the current
+ * year. Per-year sequence is computed from the highest existing match in
+ * the User collection — cheap because employeeId is uniquely indexed and
+ * sparse, so the regex range scan is bounded. Race-safe through the unique
+ * index (a clashing insert would 11000 and the caller can retry).
+ */
+async function allocateEmployeeId(now: Date = new Date()): Promise<string> {
+  const year = now.getUTCFullYear();
+  const prefix = `EMP-${year}-`;
+  // Find the highest existing employeeId for this year. Lexical sort on
+  // zero-padded numeric suffixes maps onto numeric order.
+  const latest = await User.findOne({
+    employeeId: { $regex: `^${prefix}\\d{4}$` },
+  })
+    .sort({ employeeId: -1 })
+    .select("employeeId")
+    .lean<{ employeeId: string } | null>();
+  let nextSeq = 1;
+  if (latest?.employeeId) {
+    const tail = latest.employeeId.slice(prefix.length);
+    const parsed = Number.parseInt(tail, 10);
+    if (Number.isFinite(parsed)) nextSeq = parsed + 1;
+  }
+  return `${prefix}${String(nextSeq).padStart(4, "0")}`;
 }
 
 export interface ListInput {
@@ -195,21 +248,40 @@ export async function listCandidates(input: ListCandidatesInput) {
  */
 async function notifyAdminsOfPendingCandidate(candidateId: string, candidateName: string) {
   try {
-    const { notify } = await import("../notifications/notifications.service.js");
+    const { notifyMany } = await import("../notifications/notifications.service.js");
     const admins = await User.find({ role: "ADMIN", approvalStatus: "ACTIVE" })
       .select("_id")
       .lean();
-    await Promise.all(
-      admins.map((a) =>
-        notify(a._id.toString(), {
-          kind: "CANDIDATE_AWAITING_REVIEW",
-          title: `${candidateName} is awaiting your final approval`,
-          link: "/people/candidates",
-        }),
-      ),
+    await notifyMany(
+      admins.map((a) => a._id.toString()),
+      {
+        kind: "CANDIDATE_AWAITING_REVIEW",
+        title: `${candidateName} is awaiting your final approval`,
+        link: "/people/candidates",
+      },
     );
   } catch (err) {
     logger.warn({ err, candidateId }, "notifyAdminsOfPendingCandidate failed");
+  }
+}
+
+async function notifyCandidate(
+  candidateId: string,
+  input: {
+    kind:
+      | "CANDIDATE_HR_APPROVED"
+      | "EMPLOYEE_VERIFIED"
+      | "CANDIDATE_REJECTED";
+    title: string;
+    body?: string | null;
+    link?: string | null;
+  },
+) {
+  try {
+    const { notify } = await import("../notifications/notifications.service.js");
+    await notify(candidateId, input);
+  } catch (err) {
+    logger.warn({ err, candidateId, kind: input.kind }, "notifyCandidate failed");
   }
 }
 
@@ -222,18 +294,50 @@ async function notifyAdminsOfPendingCandidate(candidateId: string, candidateName
  * Throws ConflictError if the candidate is not currently PENDING_HR — this
  * defends against double-clicks and against approving a rejected/active user.
  */
-export async function approveAtHrStage(id: string, hrId: string): Promise<FullShape> {
+export interface ApproveHrInput {
+  /**
+   * Optional department to place the candidate into at HR-approval time.
+   * Skipping this leaves the candidate's departmentId unchanged. Validated
+   * against existing departments by id; a bad id throws NotFoundError.
+   */
+  departmentId?: string | null;
+}
+
+export async function approveAtHrStage(
+  id: string,
+  hrId: string,
+  input: ApproveHrInput = {},
+): Promise<FullShape> {
   const u = await User.findById(id);
   if (!u) throw new NotFoundError("Candidate");
   if (u.approvalStatus !== "PENDING_HR") {
     throw new ConflictError(`Candidate is not awaiting HR approval (status: ${u.approvalStatus})`);
   }
+
+  // Optional department assignment piggybacks on HR approval — saves a click
+  // (the alternative was a separate PATCH after approval) and means the
+  // candidate's first notification can name their team.
+  if (input.departmentId !== undefined) {
+    if (input.departmentId === null) {
+      u.departmentId = null;
+    } else {
+      const dept = await Department.findById(input.departmentId).select("_id").lean();
+      if (!dept) throw new NotFoundError("Department");
+      u.departmentId = new Types.ObjectId(input.departmentId);
+    }
+  }
+
   u.approvalStatus = "PENDING_ADMIN";
   u.hrApprovedById = new Types.ObjectId(hrId);
   u.hrApprovedAt = new Date();
   await u.save();
 
   void notifyAdminsOfPendingCandidate(u._id.toString(), u.name);
+  void notifyCandidate(u._id.toString(), {
+    kind: "CANDIDATE_HR_APPROVED",
+    title: "HR approved your application",
+    body: "An admin will review next. We'll let you know when you're verified.",
+  });
 
   const deptName = await loadDepartmentName(u.departmentId);
   return toFullProfile(u, deptName);
@@ -256,6 +360,14 @@ export async function approveAtAdminStage(id: string, adminId: string): Promise<
   u.approvalStatus = "ACTIVE";
   u.adminApprovedById = new Types.ObjectId(adminId);
   u.adminApprovedAt = new Date();
+
+  // Stamp an `EMP-YYYY-NNNN` identifier on first activation. Skipped if
+  // the user already has one (e.g. re-activated after deactivation, or
+  // seeded ACTIVE without going through the approval flow).
+  if (!u.employeeId) {
+    u.employeeId = await allocateEmployeeId();
+  }
+
   await u.save();
 
   // Best-effort: kick off email verification so the new user receives a
@@ -269,6 +381,13 @@ export async function approveAtAdminStage(id: string, adminId: string): Promise<
       "post-approval verification email failed; admin may resend later",
     );
   }
+
+  void notifyCandidate(u._id.toString(), {
+    kind: "EMPLOYEE_VERIFIED",
+    title: "Your account is verified",
+    body: "Welcome aboard. You can now access the workspace.",
+    link: "/dashboard",
+  });
 
   const deptName = await loadDepartmentName(u.departmentId);
   return toFullProfile(u, deptName);
@@ -308,11 +427,22 @@ export async function rejectCandidate(
     "candidate rejected",
   );
 
+  void notifyCandidate(u._id.toString(), {
+    kind: "CANDIDATE_REJECTED",
+    title: "Your application was not approved",
+    body: notes ?? "Reach out to HR if you'd like to discuss.",
+  });
+
   const deptName = await loadDepartmentName(u.departmentId);
   return toFullProfile(u, deptName);
 }
 
 const SELF_EDITABLE = new Set(["name", "phone", "bio", "dateOfBirth", "address", "emergencyContact"]);
+// Defense-in-depth: even if a field somehow slips past the Zod schema, never
+// allow `role` or `isActive` mutations through this generic update path. Role
+// changes belong on a dedicated admin-only endpoint; deactivation goes through
+// POST /employees/:id/deactivate.
+const NEVER_EDITABLE = new Set(["role", "isActive"]);
 
 export async function updateEmployee(
   id: string,
@@ -326,6 +456,9 @@ export async function updateEmployee(
   const filtered: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(patch)) {
     if (v === undefined) continue;
+    if (NEVER_EDITABLE.has(k)) {
+      throw new ForbiddenError(`Field '${k}' is not editable through this endpoint`);
+    }
     if (isElevated) {
       filtered[k] = v;
     } else if (SELF_EDITABLE.has(k)) {
@@ -335,9 +468,49 @@ export async function updateEmployee(
     }
   }
 
+  // Phone is stored E.164-style (`+91XXXXXXXXXX`). The wire format is the
+  // bare 10-digit subscriber number, so we attach the country code here.
+  // Empty string means "clear the phone" — translate that to `null` so the
+  // doc field is unset rather than left as a literal "".
+  if ("phone" in filtered) {
+    const raw = filtered.phone;
+    if (typeof raw === "string" && raw.trim() !== "") {
+      filtered.phone = toIndianE164(raw);
+    } else {
+      filtered.phone = null;
+    }
+  }
+
+  // Capture pre-update departmentId so we can detect a change and notify.
+  const previousDeptId =
+    "departmentId" in filtered
+      ? (await User.findById(id).select("departmentId").lean())?.departmentId?.toString() ?? null
+      : null;
+
   const u = await User.findByIdAndUpdate(id, filtered, { new: true, runValidators: true });
   if (!u) throw new NotFoundError("Employee");
   const deptName = await loadDepartmentName(u.departmentId);
+
+  // Notify the employee when their department actually changed (excluding
+  // self-updates, which are already user-initiated).
+  if ("departmentId" in filtered && !isSelf) {
+    const newDeptId = u.departmentId ? u.departmentId.toString() : null;
+    if (newDeptId !== previousDeptId) {
+      void (async () => {
+        const { notify } = await import("../notifications/notifications.service.js");
+        await notify(u._id.toString(), {
+          kind: "DEPARTMENT_ASSIGNMENT",
+          title: deptName
+            ? `You've been assigned to ${deptName}`
+            : "Your department was updated",
+          link: "/profile",
+        });
+      })().catch((err) =>
+        logger.warn({ err, id }, "employees.updateEmployee dept notify failed"),
+      );
+    }
+  }
+
   return toFullProfile(u, deptName);
 }
 
@@ -383,14 +556,22 @@ export async function setProjectManager(userId: string, value: boolean): Promise
   u.isProjectManager = value;
   await u.save();
   const deptName = await loadDepartmentName(u.departmentId);
-  if (value && !wasManager) {
+  if (value !== wasManager) {
     void (async () => {
       const { notify } = await import("../notifications/notifications.service.js");
-      await notify(u._id.toString(), {
-        kind: "PROMOTED_TO_PM",
-        title: "You're now a Project Manager",
-        link: "/profile",
-      });
+      if (value) {
+        await notify(u._id.toString(), {
+          kind: "PROMOTED_TO_PM",
+          title: "You're now a Project Manager",
+          link: "/profile",
+        });
+      } else {
+        await notify(u._id.toString(), {
+          kind: "DEMOTED_FROM_PM",
+          title: "Your Project Manager role was removed",
+          link: "/profile",
+        });
+      }
     })().catch((err) => logger.warn({ err }, "employees.setProjectManager notify failed"));
   }
   return toFullProfile(u, deptName);
@@ -402,6 +583,16 @@ export async function deactivate(id: string): Promise<void> {
   await Position.updateMany(
     { userId: new Types.ObjectId(id), endedAt: null },
     { $set: { endedAt: new Date() } },
+  );
+  void (async () => {
+    const { notify } = await import("../notifications/notifications.service.js");
+    await notify(u._id.toString(), {
+      kind: "EMPLOYEE_DEACTIVATED",
+      title: "Your account was deactivated",
+      body: "Contact HR if you think this is in error.",
+    });
+  })().catch((err) =>
+    logger.warn({ err, id }, "employees.deactivate notify failed"),
   );
 }
 

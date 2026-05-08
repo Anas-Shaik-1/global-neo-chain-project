@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import axios from "axios";
 import { toast } from "sonner";
 import { getApi } from "@/api/axios";
@@ -47,6 +52,7 @@ export interface ChatMessage {
 export const chatKeys = {
   all: ["chat"] as const,
   conversations: ["chat", "conversations"] as const,
+  unreadTotal: ["chat", "unread-total"] as const,
   messages: (id: string, params: Record<string, unknown> = {}) =>
     ["chat", "messages", id, params] as const,
 };
@@ -57,6 +63,41 @@ export function useConversations() {
     queryFn: async () => {
       const res = await api().get("/chat/conversations");
       return res.data as Conversation[];
+    },
+  });
+}
+
+/**
+ * Total unread chat messages across every conversation the user is in.
+ * Drives the badge on the main sidebar's "Messages" entry. Polls every
+ * 30s as a safety net; the chat socket also nudges this query (see
+ * MessagesPage / AppLayout) when a new message lands.
+ */
+export function useChatUnreadTotal() {
+  return useQuery({
+    queryKey: chatKeys.unreadTotal,
+    queryFn: async () => {
+      const res = await api().get("/chat/me/unread-count");
+      return res.data as { count: number };
+    },
+    refetchInterval: 30_000,
+  });
+}
+
+/**
+ * Mark a conversation as read up to "now". Idempotent; safe to fire on
+ * every open. On success we invalidate both the conversation list (so the
+ * per-row badge clears) and the unread total (so the sidebar badge clears).
+ */
+export function useMarkConversationRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (conversationId: string) => {
+      await api().post(`/chat/conversations/${conversationId}/read`);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: chatKeys.conversations });
+      qc.invalidateQueries({ queryKey: chatKeys.unreadTotal });
     },
   });
 }
@@ -133,23 +174,50 @@ export function useRemoveGroupMember(conversationId: string | undefined) {
 }
 
 export interface ListMessagesParams {
-  before?: string;
+  /**
+   * Page size for both the initial load and each "older" page fetched on
+   * scroll-up. The backend caps this at 100; we default to 50 which gives
+   * a smooth scroll without flooding the wire.
+   */
   limit?: number;
 }
 
+/**
+ * Cursor-paginated message stream. The backend supports
+ * `?before=<ISO>&limit=N` and returns the latest N messages older than the
+ * cursor (newest-first). React Query's infinite-query primitive walks the
+ * pages backwards through history as the user scrolls toward the top of
+ * the thread.
+ *
+ * Pages are returned newest-first; consumers `flat()` them and reverse for
+ * oldest-at-top render. `getNextPageParam` returns the createdAt of the
+ * oldest message in the latest page, or `undefined` when the page came
+ * back smaller than `limit` (no more history).
+ */
 export function useMessages(
   conversationId: string | undefined,
   params: ListMessagesParams = {},
 ) {
-  return useQuery({
-    queryKey: chatKeys.messages(conversationId ?? "", params as Record<string, unknown>),
+  const limit = params.limit ?? 50;
+  return useInfiniteQuery({
+    queryKey: chatKeys.messages(conversationId ?? "", { limit } as Record<string, unknown>),
     enabled: !!conversationId,
-    queryFn: async () => {
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({ pageParam }) => {
       const res = await api().get(
         `/chat/conversations/${conversationId}/messages`,
-        { params },
+        {
+          params: pageParam
+            ? { before: pageParam, limit }
+            : { limit },
+        },
       );
       return res.data as ChatMessage[];
+    },
+    getNextPageParam: (lastPage) => {
+      if (!lastPage || lastPage.length < limit) return undefined;
+      const oldest = lastPage[lastPage.length - 1];
+      return oldest?.createdAt;
     },
   });
 }

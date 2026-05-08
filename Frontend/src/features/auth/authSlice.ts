@@ -1,6 +1,6 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 
-export type Role = "ADMIN" | "HR" | "EMPLOYEE";
+export type Role = "ADMIN" | "HR" | "EMPLOYEE" | "TESTER";
 
 export interface AuthUser {
   id: string;
@@ -14,6 +14,7 @@ export interface AuthUser {
   isVerified: boolean;
   // Auth-extensions: present on responses from a current backend; older payloads
   // (and existing tests) may omit these fields, so they're optional.
+  isPhoneVerified?: boolean;
   mustChangePassword?: boolean;
   totpEnabled?: boolean;
 }

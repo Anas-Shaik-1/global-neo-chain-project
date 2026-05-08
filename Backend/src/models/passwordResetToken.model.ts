@@ -14,6 +14,9 @@ const passwordResetTokenSchema = new Schema(
       type: String,
       required: true,
       unique: true,
+      // Defence in depth: a leaky `.find().lean()` won't exfiltrate the hash.
+      // The service already projects this in explicitly via findOne({ tokenHash }).
+      select: false,
     },
     // TTL index: Mongo deletes the doc once expiresAt is reached.
     expiresAt: { type: Date, required: true, index: { expires: 0 } },

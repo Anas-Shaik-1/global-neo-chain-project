@@ -28,6 +28,7 @@ export interface AttendanceEntry {
   lunchMinutes: number;
   durationMinutes: number | null;
   isRemote: boolean;
+  isAbsent?: boolean;
   notes?: string | null;
   createdAt: string;
 }
@@ -116,6 +117,50 @@ export function useStartLunch() {
   });
 }
 
+export interface PresentTodayPerson {
+  id: string;
+  name: string;
+  jobTitle: string | null;
+  avatarUrl: string | null;
+  clockIn: string;
+  isRemote: boolean;
+  hasClockedOut: boolean;
+}
+
+export interface NotClockedInPerson {
+  id: string;
+  name: string;
+  jobTitle: string | null;
+  avatarUrl: string | null;
+}
+
+export interface PresentTodaySummary {
+  date: string;
+  presentCount: number;
+  remoteCount: number;
+  notClockedInCount: number;
+  people: PresentTodayPerson[];
+  /** Active employees with no attendance entry today. May be missing on
+   *  responses from older backends — treat as optional and default to []. */
+  notClockedIn?: NotClockedInPerson[];
+}
+
+/**
+ * Snapshot of who's clocked in today. Drives the "Present today" dashboard
+ * widget every authenticated user sees. 60s refetch interval — slow enough
+ * to keep the API quiet, fast enough that arrivals show within a minute.
+ */
+export function usePresentToday() {
+  return useQuery({
+    queryKey: ["attendance", "present-today"],
+    queryFn: async () => {
+      const res = await api().get("/attendance/today/present");
+      return res.data as PresentTodaySummary;
+    },
+    refetchInterval: 60_000,
+  });
+}
+
 export function useEndLunch() {
   const qc = useQueryClient();
   return useMutation({
@@ -128,5 +173,38 @@ export function useEndLunch() {
       toast.success(`Lunch ended (${entry.lunchMinutes} min)`);
     },
     onError: (err) => toast.error(errorMessage(err, "Could not end lunch")),
+  });
+}
+
+export interface AdminEditAttendanceInput {
+  clockIn?: string; // ISO
+  clockOut?: string | null;
+  lunchStart?: string | null;
+  lunchEnd?: string | null;
+  isRemote?: boolean;
+  isAbsent?: boolean;
+  notes?: string | null;
+  reason?: string;
+}
+
+/**
+ * Admin-only: amend any attendance entry. Surface the affected employee on
+ * /attendance/employee/:id then PATCH /attendance/:id with the new fields.
+ * Shows a toast and invalidates the attendance month query so the UI shows
+ * the new values without a manual refresh.
+ */
+export function useAdminEditAttendance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { id: string; input: AdminEditAttendanceInput }) => {
+      const res = await api().patch(`/attendance/${args.id}`, args.input);
+      return res.data as AttendanceEntry;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: attendanceKeys.all });
+      toast.success("Attendance updated");
+    },
+    onError: (err) =>
+      toast.error(errorMessage(err, "Could not update attendance")),
   });
 }

@@ -142,6 +142,7 @@ export function CreateTaskDialog({ open, onOpenChange, projectId, onCreated }: P
                         <SelectItem value="LOW">Low</SelectItem>
                         <SelectItem value="MEDIUM">Medium</SelectItem>
                         <SelectItem value="HIGH">High</SelectItem>
+                        <SelectItem value="ENHANCEMENT">Enhancement</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -186,7 +187,14 @@ export function CreateTaskDialog({ open, onOpenChange, projectId, onCreated }: P
                 <FormItem>
                   <FormLabel>Due date</FormLabel>
                   <FormControl>
-                    <Input type="date" {...field} value={field.value ?? ""} />
+                    <Input
+                      type="date"
+                      // Forward-only: tasks can't be filed already overdue.
+                      // Backend re-validates the same rule, this is just UX.
+                      min={new Date().toISOString().slice(0, 10)}
+                      {...field}
+                      value={field.value ?? ""}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

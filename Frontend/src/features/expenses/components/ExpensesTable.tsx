@@ -66,87 +66,206 @@ export function ExpensesTable({
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border text-left text-muted-foreground">
-            <th className="py-2 pr-3">Date</th>
-            {showOwner && <th className="py-2 pr-3">Submitter</th>}
-            <th className="py-2 pr-3">Category</th>
-            <th className="py-2 pr-3">Description</th>
-            <th className="py-2 pr-3 text-right">Amount</th>
-            <th className="py-2 pr-3">Status</th>
-            <th className="py-2 pr-3">Decision by</th>
-            <th className="py-2 pr-3">Receipt</th>
-            {showActions && <th className="py-2 pr-3 text-right">Actions</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {expenses.map((e) => (
-            <tr key={e.id} className="border-b border-border/50">
-              <td className="py-2 pr-3 whitespace-nowrap">{formatDate(e.incurredOn)}</td>
-              {showOwner && (
-                <td className="py-2 pr-3 whitespace-nowrap">{e.userName ?? "—"}</td>
-              )}
-              <td className="py-2 pr-3 whitespace-nowrap">{e.category}</td>
-              <td className="py-2 pr-3 max-w-[28ch] truncate" title={e.description}>
-                {e.description}
-              </td>
-              <td className="py-2 pr-3 text-right whitespace-nowrap tabular-nums">
-                <div className="font-medium">{formatAmount(e.amount, e.currency)}</div>
-                {e.currency !== "INR" && (
-                  <div className="text-xs text-muted-foreground">{formatInr(e.amountInr)}</div>
-                )}
-              </td>
-              <td className="py-2 pr-3">
-                <StatusBadge status={e.status} />
-              </td>
-              <td className="py-2 pr-3 whitespace-nowrap text-muted-foreground">
-                {e.decisionByName ?? "—"}
-              </td>
-              <td className="py-2 pr-3 whitespace-nowrap">
-                {e.receiptUrl ? (
-                  <a
-                    href={e.receiptUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary underline"
-                  >
-                    View
-                  </a>
-                ) : (
-                  <span className="text-muted-foreground">—</span>
-                )}
-              </td>
-              {showActions && (
-                <td className="py-2 pr-3 text-right">
-                  <div className="flex flex-wrap justify-end gap-2">
-                    {onView && (
-                      <Button size="sm" variant="ghost" onClick={() => onView(e)}>
-                        View
-                      </Button>
-                    )}
-                    {onApprove && e.status === "PENDING" && (
-                      <Button size="sm" variant="outline" onClick={() => onApprove(e)}>
-                        Approve
-                      </Button>
-                    )}
-                    {onReject && e.status === "PENDING" && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => onReject(e)}
-                      >
-                        Reject
-                      </Button>
-                    )}
-                  </div>
-                </td>
-              )}
+    <>
+      {/* Mobile: card stack (< md) */}
+      <div className="space-y-3 md:hidden">
+        {expenses.map((e) => (
+          <ExpenseCard
+            key={e.id}
+            expense={e}
+            showOwner={showOwner}
+            showActions={showActions}
+            onView={onView}
+            onApprove={onApprove}
+            onReject={onReject}
+          />
+        ))}
+      </div>
+
+      {/* Desktop: table (md+) */}
+      <div className="hidden overflow-x-auto md:block">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-muted-foreground">
+              <th className="py-2 pr-3">Date</th>
+              {showOwner && <th className="py-2 pr-3">Submitter</th>}
+              <th className="py-2 pr-3">Category</th>
+              <th className="py-2 pr-3">Description</th>
+              <th className="py-2 pr-3 text-right">Amount</th>
+              <th className="py-2 pr-3">Status</th>
+              <th className="py-2 pr-3">Decision by</th>
+              <th className="py-2 pr-3">Receipt</th>
+              {showActions && <th className="py-2 pr-3 text-right">Actions</th>}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {expenses.map((e) => (
+              <tr key={e.id} className="border-b border-border/50">
+                <td className="py-2 pr-3 whitespace-nowrap">{formatDate(e.incurredOn)}</td>
+                {showOwner && (
+                  <td className="py-2 pr-3 whitespace-nowrap">{e.userName ?? "—"}</td>
+                )}
+                <td className="py-2 pr-3 whitespace-nowrap">{e.category}</td>
+                <td className="py-2 pr-3 max-w-[28ch] truncate" title={e.description}>
+                  {e.description}
+                </td>
+                <td className="py-2 pr-3 text-right whitespace-nowrap tabular-nums">
+                  <div className="font-medium">{formatAmount(e.amount, e.currency)}</div>
+                  {e.currency !== "INR" && (
+                    <div className="text-xs text-muted-foreground">{formatInr(e.amountInr)}</div>
+                  )}
+                </td>
+                <td className="py-2 pr-3">
+                  <StatusBadge status={e.status} />
+                </td>
+                <td className="py-2 pr-3 whitespace-nowrap text-muted-foreground">
+                  {e.decisionByName ?? "—"}
+                </td>
+                <td className="py-2 pr-3 whitespace-nowrap">
+                  {e.receiptUrl ? (
+                    <a
+                      href={e.receiptUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary underline"
+                    >
+                      View
+                    </a>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </td>
+                {showActions && (
+                  <td className="py-2 pr-3 text-right">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {onView && (
+                        <Button size="sm" variant="ghost" onClick={() => onView(e)}>
+                          View
+                        </Button>
+                      )}
+                      {onApprove && e.status === "PENDING" && (
+                        <Button size="sm" variant="outline" onClick={() => onApprove(e)}>
+                          Approve
+                        </Button>
+                      )}
+                      {onReject && e.status === "PENDING" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => onReject(e)}
+                        >
+                          Reject
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+/**
+ * Mobile-only card representation of one expense row. Re-uses the same status
+ * tones and amount formatters as the desktop table so a designer changing one
+ * implicitly updates both views.
+ */
+function ExpenseCard({
+  expense: e,
+  showOwner,
+  showActions,
+  onView,
+  onApprove,
+  onReject,
+}: {
+  expense: Expense;
+  showOwner: boolean;
+  showActions: boolean;
+  onView?: (expense: Expense) => void;
+  onApprove?: (expense: Expense) => void;
+  onReject?: (expense: Expense) => void;
+}) {
+  return (
+    <div className="rounded-md border border-border/60 bg-card/40 p-3.5 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            {formatDate(e.incurredOn)} · {e.category}
+          </div>
+          <div className="mt-1 line-clamp-2 text-sm font-medium text-foreground">
+            {e.description}
+          </div>
+          {showOwner && e.userName && (
+            <div className="mt-1 text-xs text-muted-foreground">by {e.userName}</div>
+          )}
+        </div>
+        <div className="text-right tabular-nums">
+          <div className="text-base font-semibold">
+            {formatAmount(e.amount, e.currency)}
+          </div>
+          {e.currency !== "INR" && (
+            <div className="text-[11px] text-muted-foreground">{formatInr(e.amountInr)}</div>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <StatusBadge status={e.status} />
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          {e.decisionByName && (
+            <span className="truncate">decided · {e.decisionByName}</span>
+          )}
+          {e.receiptUrl && (
+            <a
+              href={e.receiptUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-primary underline"
+            >
+              receipt
+            </a>
+          )}
+        </div>
+      </div>
+
+      {showActions && (onView || onApprove || onReject) && (
+        <div className="mt-3 flex flex-wrap gap-2 border-t border-border/40 pt-3">
+          {onView && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="flex-1"
+              onClick={() => onView(e)}
+            >
+              View
+            </Button>
+          )}
+          {onApprove && e.status === "PENDING" && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-1"
+              onClick={() => onApprove(e)}
+            >
+              Approve
+            </Button>
+          )}
+          {onReject && e.status === "PENDING" && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-1"
+              onClick={() => onReject(e)}
+            >
+              Reject
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

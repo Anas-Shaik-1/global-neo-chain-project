@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -8,9 +9,11 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import type { Task, TaskStatus, TaskPriority } from "../api/hooks";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useSubtasks, type Task, type TaskStatus, type TaskPriority } from "../api/hooks";
 
 const COLUMNS: { id: TaskStatus; label: string; dot: string }[] = [
   { id: "TODO", label: "To do", dot: "bg-muted-foreground/60" },
@@ -24,6 +27,10 @@ function priorityChipClasses(priority: TaskPriority): string {
       return "bg-destructive/15 text-destructive border-destructive/30";
     case "MEDIUM":
       return "bg-primary/15 text-primary border-primary/30";
+    case "ENHANCEMENT":
+      // Enhancement is non-urgent product polish — distinct violet so it
+      // doesn't read as a bug-fix priority alongside HIGH/MEDIUM/LOW.
+      return "bg-violet-500/15 text-violet-300 border-violet-500/30";
     case "LOW":
     default:
       return "bg-muted text-muted-foreground border-border";
@@ -36,6 +43,8 @@ function priorityStripClasses(priority: TaskPriority): string {
       return "bg-destructive";
     case "MEDIUM":
       return "bg-primary";
+    case "ENHANCEMENT":
+      return "bg-violet-500";
     case "LOW":
     default:
       return "bg-muted-foreground/30";
@@ -63,14 +72,20 @@ function formatDueDate(iso: string | null | undefined): string | null {
 interface DraggableTaskCardProps {
   task: Task;
   onClick: () => void;
+  onSubtaskClick?: (subtask: Task) => void;
 }
 
-function DraggableTaskCard({ task, onClick }: DraggableTaskCardProps) {
+function DraggableTaskCard({ task, onClick, onSubtaskClick }: DraggableTaskCardProps) {
   const due = formatDueDate(task.dueDate);
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
     data: { task },
   });
+  // Subtasks are fetched lazily — the kanban renders dozens of cards, so
+  // we don't want to query subtasks for every parent up-front. The hook
+  // is gated by `enabled` (see useSubtasks signature) once expanded.
+  const [expanded, setExpanded] = useState(false);
+  const subtasks = useSubtasks(expanded ? task.id : undefined);
 
   const style = {
     transform: CSS.Translate.toString(transform),
@@ -126,14 +141,109 @@ function DraggableTaskCard({ task, onClick }: DraggableTaskCardProps) {
             <AvatarFallback className="text-[10px]">{initialsOf(task.assigneeName)}</AvatarFallback>
           </Avatar>
           {task.subtaskCount > 0 && (
-            <span className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+            // Stop propagation in BOTH onPointerDown and onClick so dnd-kit
+            // doesn't pick this up as a drag start, and the parent card's
+            // onClick (which opens the detail dialog) stays scoped to the
+            // rest of the card surface.
+            <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpanded((v) => !v);
+              }}
+              aria-expanded={expanded}
+              aria-label={expanded ? "Hide subtasks" : "Show subtasks"}
+              className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+            >
+              {expanded ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
               {task.subtaskCount} sub
-            </span>
+            </button>
           )}
         </div>
         {due && <span className="font-mono text-xs text-muted-foreground">{due}</span>}
       </div>
+
+      {expanded && (
+        <div
+          className="mt-3 border-t border-border/60 pt-2"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {subtasks.isLoading ? (
+            <div className="space-y-1.5">
+              <Skeleton className="h-5 w-full" />
+              <Skeleton className="h-5 w-2/3" />
+            </div>
+          ) : subtasks.data && subtasks.data.length > 0 ? (
+            <ul className="space-y-1">
+              {subtasks.data.map((s) => (
+                <SubtaskRow
+                  key={s.id}
+                  subtask={s}
+                  onClick={() => onSubtaskClick?.(s)}
+                />
+              ))}
+            </ul>
+          ) : (
+            <div className="text-[11px] italic text-muted-foreground">
+              No subtasks yet.
+            </div>
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+const SUBTASK_STATUS_DOT: Record<TaskStatus, string> = {
+  TODO: "bg-muted-foreground/60",
+  IN_PROGRESS: "bg-amber-400",
+  DONE: "bg-emerald-400",
+};
+
+function SubtaskRow({
+  subtask,
+  onClick,
+}: {
+  subtask: Task;
+  onClick: () => void;
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[12px] transition-colors hover:bg-accent/40"
+      >
+        <span
+          aria-hidden
+          className={cn(
+            "h-1.5 w-1.5 shrink-0 rounded-full",
+            SUBTASK_STATUS_DOT[subtask.status],
+          )}
+        />
+        <span
+          className={cn(
+            "flex-1 truncate",
+            subtask.status === "DONE" && "text-muted-foreground line-through",
+          )}
+        >
+          {subtask.title}
+        </span>
+        {subtask.assigneeName && (
+          <Avatar className="h-4 w-4 shrink-0">
+            <AvatarFallback className="text-[8px]">
+              {initialsOf(subtask.assigneeName)}
+            </AvatarFallback>
+          </Avatar>
+        )}
+      </button>
+    </li>
   );
 }
 
@@ -220,7 +330,12 @@ export function KanbanBoard({ tasks, onCardClick, onColumnAdd, onTaskMove }: Pro
               onAdd={onColumnAdd ? () => onColumnAdd(col.id) : undefined}
             >
               {columnTasks.map((t) => (
-                <DraggableTaskCard key={t.id} task={t} onClick={() => onCardClick(t)} />
+                <DraggableTaskCard
+                  key={t.id}
+                  task={t}
+                  onClick={() => onCardClick(t)}
+                  onSubtaskClick={onCardClick}
+                />
               ))}
               {columnTasks.length === 0 && (
                 <div className="rounded-md border border-dashed border-border/60 px-3 py-6 text-center text-xs text-muted-foreground">

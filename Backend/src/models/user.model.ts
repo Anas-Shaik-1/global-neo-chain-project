@@ -1,6 +1,9 @@
 import { Schema, model, type InferSchemaType, type Model, Types } from "mongoose";
 
-export const ROLES = ["ADMIN", "HR", "EMPLOYEE"] as const;
+// Roles. TESTER is a specialised flavour of EMPLOYEE that owns the Bugs
+// module — they're the only role that can file or edit bug reports; the
+// rest of the platform treats them with EMPLOYEE-level access elsewhere.
+export const ROLES = ["ADMIN", "HR", "EMPLOYEE", "TESTER"] as const;
 export type Role = (typeof ROLES)[number];
 
 export const EMPLOYMENT_TYPES = ["FULL_TIME", "PART_TIME", "CONTRACT", "INTERN"] as const;
@@ -32,9 +35,35 @@ const emergencyContactSchema = new Schema(
   { _id: false },
 );
 
+const avatarVariantsSchema = new Schema(
+  {
+    small: { type: String, default: null },
+    medium: { type: String, default: null },
+    large: { type: String, default: null },
+  },
+  { _id: false },
+);
+
 const userSchema = new Schema(
   {
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    /**
+     * Human-friendly identifier stamped on a user when admin approves them
+     * (or, for seed/legacy users, retroactively on first lookup). Format is
+     * `EMP-<YYYY>-<NNNN>` where NNNN is a per-year sequence padded to four
+     * digits — same as the printable HR-style ID used on payslips and ID
+     * cards. Sparse so docs created before this field existed don't fail
+     * the unique constraint until they get one assigned.
+     */
+    employeeId: {
+      type: String,
+      // No `default: null` — Mongoose would stamp every doc with literal
+      // null and the sparse index treats null as a value, blowing up the
+      // second insert with E11000. Leaving the field absent until allocated.
+      unique: true,
+      sparse: true,
+      trim: true,
+    },
     passwordHash: { type: String, required: true, select: false },
     name: { type: String, required: true, trim: true },
     role: { type: String, enum: ROLES, required: true, default: "EMPLOYEE" },
@@ -50,6 +79,14 @@ const userSchema = new Schema(
     bio: { type: String, trim: true, maxlength: 500 },
     avatarUrl: { type: String },
     avatarKey: { type: String, select: false },
+    /**
+     * Cloudinary-driven responsive avatar URLs. Populated when an avatar is
+     * saved via STORAGE_DRIVER=cloudinary; the local driver leaves these
+     * null and FE callers fall back to `avatarUrl`. Each variant is a
+     * fully-qualified CDN URL with a face-aware crop transformation baked
+     * in (small=64, medium=128, large=512).
+     */
+    avatarVariants: { type: avatarVariantsSchema, default: () => ({}) },
     departmentId: { type: Schema.Types.ObjectId, ref: "Department", default: null, index: true },
 
     // Sensitive (self + HR + Admin)
@@ -68,6 +105,17 @@ const userSchema = new Schema(
     // TOTP shared secret (base32). select:false so it never leaks via /auth/me, etc.
     totpSecret: { type: String, default: null, select: false },
     totpEnabled: { type: Boolean, default: false },
+    // Last accepted TOTP step counter — replay protection. select:false so
+    // it never leaks via /auth/me or other find queries.
+    totpLastUsedStep: { type: Number, default: 0, select: false },
+
+    // Phone-number verification via 6-digit SMS OTP. The hash defends against
+    // DB-leak token replay; the attempts counter throttles brute-force (we
+    // refuse a 6th wrong submission and require a fresh code request).
+    isPhoneVerified: { type: Boolean, required: true, default: false },
+    phoneVerificationCodeHash: { type: String, default: null, select: false },
+    phoneVerificationExpiresAt: { type: Date, default: null, select: false },
+    phoneVerificationAttempts: { type: Number, default: 0, select: false },
 
     // Self-registration + 2-stage approval pipeline. New accounts default to
     // PENDING_HR; existing seeded users (admin/hr/pm/employee) are explicitly

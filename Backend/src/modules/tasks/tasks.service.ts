@@ -13,8 +13,94 @@ import {
   type TaskActivityKind,
 } from "../../models/taskActivity.model.js";
 import { User } from "../../models/user.model.js";
-import { ConflictError, NotFoundError } from "../../lib/errors.js";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
+import type { Role } from "../../models/user.model.js";
+
+/**
+ * Authorization viewer — mirrors the shape attached to `req.user` by the
+ * auth middleware. Passed through every helper and service function that
+ * needs to perform an access check.
+ */
+export interface Viewer {
+  id: string;
+  role: Role;
+  isProjectManager: boolean;
+}
+
+function isElevated(viewer: Viewer): boolean {
+  // ADMIN/HR are elevated; the global isProjectManager sub-role flag is
+  // also treated as elevated for project/task access since this codebase
+  // does not (currently) maintain a per-project pmId or members array.
+  return viewer.role === "ADMIN" || viewer.role === "HR" || viewer.isProjectManager;
+}
+
+/**
+ * Read-side gate for a project. Elevated roles + global PM bypass; an
+ * employee is allowed if they have at least one task in the project as
+ * either creator or assignee. There is no explicit project membership
+ * collection in the schema, so task-attachment is the closest available
+ * proxy.
+ */
+export async function assertCanAccessProject(
+  projectId: string,
+  viewer: Viewer,
+): Promise<void> {
+  const project = await Project.findById(projectId);
+  if (!project) throw new NotFoundError("Project");
+  if (isElevated(viewer)) return;
+  const viewerOid = new Types.ObjectId(viewer.id);
+  const projectOid = new Types.ObjectId(projectId);
+  const hasTaskInProject = await Task.exists({
+    projectId: projectOid,
+    $or: [{ createdById: viewerOid }, { assigneeId: viewerOid }],
+  });
+  if (!hasTaskInProject) throw new ForbiddenError();
+}
+
+/**
+ * Write-side gate for a single task. Elevated roles + global PM bypass;
+ * otherwise the viewer must be the creator OR the current assignee. This
+ * also covers comment-create + subtask-create paths, which require the
+ * same level of standing on the parent task.
+ */
+export async function assertCanModifyTask(
+  taskId: string,
+  viewer: Viewer,
+): Promise<TaskDoc> {
+  const task = await Task.findById(taskId);
+  if (!task) throw new NotFoundError("Task");
+  if (isElevated(viewer)) return task;
+  const viewerId = viewer.id;
+  const isCreator = task.createdById.toString() === viewerId;
+  const isAssignee = task.assigneeId ? task.assigneeId.toString() === viewerId : false;
+  if (!isCreator && !isAssignee) throw new ForbiddenError();
+  return task;
+}
+
+/**
+ * Read-side gate for a single task. Elevated roles bypass; otherwise the
+ * viewer must be the creator, the assignee, or have any task in the same
+ * project (mirrors assertCanAccessProject).
+ */
+export async function assertCanReadTask(
+  taskId: string,
+  viewer: Viewer,
+): Promise<TaskDoc> {
+  const task = await Task.findById(taskId);
+  if (!task) throw new NotFoundError("Task");
+  if (isElevated(viewer)) return task;
+  const viewerId = viewer.id;
+  if (task.createdById.toString() === viewerId) return task;
+  if (task.assigneeId && task.assigneeId.toString() === viewerId) return task;
+  const viewerOid = new Types.ObjectId(viewer.id);
+  const hasTaskInProject = await Task.exists({
+    projectId: task.projectId,
+    $or: [{ createdById: viewerOid }, { assigneeId: viewerOid }],
+  });
+  if (!hasTaskInProject) throw new ForbiddenError();
+  return task;
+}
 
 async function notifyTaskAssigned(args: {
   assigneeId: string;
@@ -281,10 +367,14 @@ export async function listTasks(projectId: string, filters: ListTasksFilters): P
   if (filters.priority) filter.priority = filters.priority;
   if (filters.assigneeId) filter.assigneeId = new Types.ObjectId(filters.assigneeId);
   const tasks = await Task.find(filter).sort({ createdAt: -1 });
+  // Three independent denormalization lookups — run them in parallel rather
+  // than serially. With realistic page sizes this saves 2 round-trips.
   const userIds = tasks.flatMap((t) => [t.assigneeId, t.createdById]);
-  const userNames = await buildUserNamesMap(userIds);
-  const projectInfo = await buildProjectInfoMap(tasks.map((t) => t.projectId));
-  const subtaskCounts = await buildSubtaskCountsMap(tasks.map((t) => t._id));
+  const [userNames, projectInfo, subtaskCounts] = await Promise.all([
+    buildUserNamesMap(userIds),
+    buildProjectInfoMap(tasks.map((t) => t.projectId)),
+    buildSubtaskCountsMap(tasks.map((t) => t._id)),
+  ]);
   return tasks.map((t) => denormalizeTask(t, { userNames, projectInfo, subtaskCounts }));
 }
 
@@ -298,7 +388,23 @@ export interface CreateTaskInput {
   parentTaskId?: string | null;
 }
 
+/**
+ * Reject task due-dates earlier than the start of today (UTC). Tasks are
+ * forward-looking work — letting users file something already overdue
+ * silently inflates the "overdue" count and clutters the inbox. Same rule
+ * applies to creates and updates.
+ */
+function ensureDueDateNotInPast(d: Date | null | undefined): void {
+  if (!d) return;
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  if (d.getTime() < today.getTime()) {
+    throw new ValidationError("dueDate must be today or later");
+  }
+}
+
 export async function createTask(input: CreateTaskInput, createdById: string): Promise<TaskResponseShape> {
+  ensureDueDateNotInPast(input.dueDate ?? null);
   const project = await Project.findById(input.projectId);
   if (!project) throw new NotFoundError("Project");
   let parentTaskId: Types.ObjectId | null = null;
@@ -344,9 +450,11 @@ export async function createTask(input: CreateTaskInput, createdById: string): P
 export async function getTask(id: string): Promise<TaskResponseShape> {
   const t = await Task.findById(id);
   if (!t) throw new NotFoundError("Task");
-  const userNames = await buildUserNamesMap([t.assigneeId, t.createdById]);
-  const projectInfo = await buildProjectInfoMap([t.projectId]);
-  const subtaskCounts = await buildSubtaskCountsMap([t._id]);
+  const [userNames, projectInfo, subtaskCounts] = await Promise.all([
+    buildUserNamesMap([t.assigneeId, t.createdById]),
+    buildProjectInfoMap([t.projectId]),
+    buildSubtaskCountsMap([t._id]),
+  ]);
   return denormalizeTask(t, { userNames, projectInfo, subtaskCounts });
 }
 
@@ -364,6 +472,9 @@ export async function updateTask(
   patch: UpdateTaskInput,
   actorId?: string,
 ): Promise<TaskResponseShape> {
+  // Same forward-looking rule as createTask: pushing an existing task's
+  // dueDate into the past is treated as the same kind of input error.
+  if (patch.dueDate !== undefined) ensureDueDateNotInPast(patch.dueDate);
   const before = await Task.findById(id);
   if (!before) throw new NotFoundError("Task");
 
@@ -451,9 +562,11 @@ export async function updateTask(
     }
   }
 
-  const userNames = await buildUserNamesMap([t.assigneeId, t.createdById]);
-  const projectInfo = await buildProjectInfoMap([t.projectId]);
-  const subtaskCounts = await buildSubtaskCountsMap([t._id]);
+  const [userNames, projectInfo, subtaskCounts] = await Promise.all([
+    buildUserNamesMap([t.assigneeId, t.createdById]),
+    buildProjectInfoMap([t.projectId]),
+    buildSubtaskCountsMap([t._id]),
+  ]);
   return denormalizeTask(t, { userNames, projectInfo, subtaskCounts });
 }
 
@@ -478,6 +591,34 @@ export async function addComment(taskId: string, authorId: string, body: string)
     summary: body.slice(0, 100),
   });
   const userNames = await buildUserNamesMap([created.authorId]);
+
+  // Notify the assignee + creator (excluding the comment author themselves
+  // and any duplicates). Best-effort fanout via notifyMany.
+  const recipients = new Set<string>();
+  if (task.assigneeId) recipients.add(task.assigneeId.toString());
+  recipients.add(task.createdById.toString());
+  recipients.delete(authorId);
+  if (recipients.size > 0) {
+    void (async () => {
+      const project = await Project.findById(task.projectId).select("name").lean();
+      const author = userNames.get(authorId) ?? "Someone";
+      const { notifyMany } = await import(
+        "../notifications/notifications.service.js"
+      );
+      await notifyMany(Array.from(recipients), {
+        kind: "TASK_COMMENTED",
+        title: `${author} commented on "${task.title}"`,
+        body: body.slice(0, 140),
+        link: `/tasks?project=${task.projectId.toString()}`,
+        // Project name is appended to the body when available so the
+        // notification is meaningful without opening the link.
+        ...(project?.name ? { body: `${project.name} · ${body.slice(0, 120)}` } : {}),
+      });
+    })().catch((err) =>
+      logger.warn({ err, taskId }, "tasks.addComment notify failed"),
+    );
+  }
+
   return denormalizeComment(created, userNames);
 }
 
@@ -498,8 +639,10 @@ export async function listSubtasks(parentTaskId: string): Promise<TaskResponseSh
     createdAt: 1,
   });
   const userIds = tasks.flatMap((t) => [t.assigneeId, t.createdById]);
-  const userNames = await buildUserNamesMap(userIds);
-  const projectInfo = await buildProjectInfoMap(tasks.map((t) => t.projectId));
-  const subtaskCounts = await buildSubtaskCountsMap(tasks.map((t) => t._id));
+  const [userNames, projectInfo, subtaskCounts] = await Promise.all([
+    buildUserNamesMap(userIds),
+    buildProjectInfoMap(tasks.map((t) => t.projectId)),
+    buildSubtaskCountsMap(tasks.map((t) => t._id)),
+  ]);
   return tasks.map((t) => denormalizeTask(t, { userNames, projectInfo, subtaskCounts }));
 }
