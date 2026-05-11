@@ -33,6 +33,10 @@ export const NOTIFICATION_KINDS = [
   // Calendar
   "CALENDAR_INVITE",
   "CALENDAR_REMINDER",
+  // Leave requests
+  "LEAVE_SUBMITTED",
+  "LEAVE_APPROVED",
+  "LEAVE_REJECTED",
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 

@@ -27,6 +27,8 @@ import { calendarRouter } from "./modules/calendar/calendar.routes.js";
 import { dashboardRouter } from "./modules/dashboard/dashboard.routes.js";
 import { notificationsRouter } from "./modules/notifications/notifications.routes.js";
 import { contactRouter } from "./modules/contact/contact.routes.js";
+import { resumeRouter } from "./modules/resume/resume.routes.js";
+import { leavesRouter } from "./modules/leaves/leaves.routes.js";
 import "./modules/auth/auth.schema.js";
 import "./modules/authExtensions/authExtensions.schema.js";
 import "./modules/registration/registration.schema.js";
@@ -44,6 +46,8 @@ import "./modules/calendar/calendar.schema.js";
 import "./modules/dashboard/dashboard.schema.js";
 import "./modules/notifications/notifications.schema.js";
 import "./modules/contact/contact.schema.js";
+import "./modules/resume/resume.schema.js";
+import "./modules/leaves/leaves.schema.js";
 import { buildOpenApiDocument } from "./openapi/spec.js";
 
 export function createApp() {
@@ -108,6 +112,12 @@ export function createApp() {
   // Public contact-form endpoint — unauthenticated. Has its own tight rate
   // limit inside the router (5/15min/IP) and a honeypot field.
   app.use("/contact", contactRouter);
+  // Per-user resume builder — every authenticated role can build, save,
+  // and download their own resume. See modules/resume.
+  app.use("/resume", resumeRouter);
+  // Typed leave requests. Any active user can file own requests; only
+  // ADMIN can approve/reject. Owner can cancel a PENDING request.
+  app.use("/leaves", leavesRouter);
 
   app.use(errorHandler);
   return app;

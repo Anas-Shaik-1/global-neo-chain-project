@@ -35,13 +35,17 @@ import { CallView } from "@/features/calls/components/CallView";
 import { BugsPage } from "@/features/bugs/pages/BugsPage";
 import { FeedbackPage } from "@/features/feedback/pages/FeedbackPage";
 import { CalendarPage } from "@/features/calendar/pages/CalendarPage";
+import { ResumeBuilderPage } from "@/features/resume/pages/ResumeBuilderPage";
+import { LeavesPage } from "@/features/leaves/pages/LeavesPage";
 import { RoleGate } from "@/features/auth/RoleGate";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { ScrollToHash } from "@/components/common/ScrollToHash";
 import { LandingPage } from "@/features/landing/LandingPage";
 import { TeamPage } from "@/features/landing/pages/TeamPage";
 import { ServicesPage } from "@/features/landing/pages/ServicesPage";
+import { ServiceDetailPage } from "@/features/landing/pages/ServiceDetailPage";
 import { IndustriesPage } from "@/features/landing/pages/IndustriesPage";
+import { IndustryDetailPage } from "@/features/landing/pages/IndustryDetailPage";
 import { AboutPage } from "@/features/landing/pages/AboutPage";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
@@ -55,7 +59,9 @@ function Routed() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/team" element={<TeamPage />} />
       <Route path="/services" element={<ServicesPage />} />
+      <Route path="/services/:slug" element={<ServiceDetailPage />} />
       <Route path="/industries" element={<IndustriesPage />} />
+      <Route path="/industries/:slug" element={<IndustryDetailPage />} />
       <Route path="/about" element={<AboutPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
@@ -98,6 +104,8 @@ function Routed() {
           <Route path="/bugs" element={<BugsPage />} />
           <Route path="/feedback" element={<FeedbackPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
+          <Route path="/resume" element={<ResumeBuilderPage />} />
+          <Route path="/leaves" element={<LeavesPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

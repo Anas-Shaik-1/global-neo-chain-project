@@ -5,6 +5,8 @@ import {
   Building2,
   Bug,
   CalendarDays,
+  CalendarOff,
+  FileText,
   LayoutDashboard,
   Lightbulb,
   ListChecks,
@@ -39,12 +41,16 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
   { to: "/attendance", label: "Attendance", Icon: CalendarClock },
+  { to: "/leaves", label: "Leaves", Icon: CalendarOff },
   { to: "/calendar", label: "Calendar", Icon: CalendarDays },
   { to: "/tasks", label: "Tasks", Icon: ListChecks },
   { to: "/messages", label: "Messages", Icon: MessageSquare, badgeKind: "messages" },
   { to: "/calls", label: "Calls", Icon: Phone },
   { to: "/expenses", label: "Expenses", Icon: Receipt },
   { to: "/payroll", label: "Payroll", Icon: BadgeDollarSign },
+  // Personal resume builder — every authenticated role gets their own
+  // editor + PDF export, modelled on resume.globalneochain.com.
+  { to: "/resume", label: "Resume", Icon: FileText },
   { to: "/people", label: "People", Icon: Users },
   { to: "/people/candidates", label: "Candidates", Icon: UserCheck, roles: ["HR", "ADMIN"] },
   { to: "/departments", label: "Departments", Icon: Building2, roles: ["HR", "ADMIN"] },
