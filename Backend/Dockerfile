@@ -7,7 +7,7 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # Install with frozen lockfile against the Backend lockfile only.
 COPY package.json pnpm-lock.yaml ./
-RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
 
 COPY tsconfig.json ./
@@ -15,7 +15,7 @@ COPY src ./src
 RUN pnpm exec tsc -p tsconfig.json
 
 # Drop dev deps for the runtime image.
-RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
     pnpm install --prod --frozen-lockfile
 
 # ─── runtime stage ────────────────────────────────────────────────────────────
@@ -39,7 +39,6 @@ RUN mkdir -p /app/uploads \
 USER app
 
 EXPOSE 3000
-VOLUME ["/app/uploads"]
 
 # Liveness probe: hit /health/live (no DB roundtrip). Orchestrators that want
 # readiness should hit /health/ready.
