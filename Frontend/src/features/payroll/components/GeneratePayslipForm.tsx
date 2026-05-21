@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useForm, useFieldArray } from "react-hook-form";
+import { AlertCircle } from "lucide-react";
+import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,7 @@ import {
 import { useEmployeesList } from "@/features/employees/api/hooks";
 import {
   BREAKDOWN_KINDS,
+  useAllPayslips,
   useCreatePayslip,
   type BreakdownItem,
   type Payslip,
@@ -86,6 +88,25 @@ export function GeneratePayslipForm({ onCreated }: Props) {
     control: form.control,
     name: "breakdown",
   });
+
+  // ── Duplicate-month guard ─────────────────────────────────────────────
+  // Watch the (employee, month) pair and ask the API whether a payslip
+  // already exists for that combination. If it does, surface an inline
+  // warning and gate the submit button — the backend enforces the same
+  // rule via a unique compound index, but catching it here saves the
+  // admin from filling in gross + breakdown only to hit a 409.
+  const watchedUserId = useWatch({ control: form.control, name: "userId" });
+  const watchedMonth = useWatch({ control: form.control, name: "month" });
+  const monthLooksValid = /^\d{4}-(0[1-9]|1[0-2])$/.test(watchedMonth ?? "");
+  const checkEnabled = Boolean(watchedUserId) && monthLooksValid;
+  const dupQ = useAllPayslips(
+    checkEnabled
+      ? { userId: watchedUserId, month: watchedMonth, limit: 1 }
+      : {},
+    checkEnabled,
+  );
+  const alreadyExists =
+    checkEnabled && (dupQ.data?.items?.length ?? 0) > 0;
 
   function onSubmit(values: FormShape) {
     setError(null);
@@ -337,6 +358,24 @@ export function GeneratePayslipForm({ onCreated }: Props) {
               )}
             />
 
+            {alreadyExists && (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/[0.06] px-3 py-2 text-sm text-amber-300"
+              >
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <div className="space-y-0.5">
+                  <div className="font-medium">
+                    Payslip already exists for {watchedMonth}
+                  </div>
+                  <div className="text-xs text-amber-300/80">
+                    Each month can only be generated once per employee.
+                    Pick a different month, or open the existing payslip
+                    from the table below.
+                  </div>
+                </div>
+              </div>
+            )}
             {error && (
               <div role="alert" className="text-sm text-destructive">
                 {error}
@@ -349,7 +388,17 @@ export function GeneratePayslipForm({ onCreated }: Props) {
             )}
 
             <div className="flex justify-end">
-              <Button type="submit" disabled={pending || form.formState.isSubmitting}>
+              <Button
+                type="submit"
+                disabled={
+                  pending || form.formState.isSubmitting || alreadyExists
+                }
+                title={
+                  alreadyExists
+                    ? `A payslip for ${watchedMonth} already exists for this employee`
+                    : undefined
+                }
+              >
                 {pending ? "Generating..." : "Generate payslip"}
               </Button>
             </div>

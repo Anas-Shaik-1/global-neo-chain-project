@@ -31,3 +31,9 @@ Backend/openapi.json
 
 # Test coverage
 coverage/
+
+# Claude Code
+.claude/
+
+# TypeScript incremental build info
+*.tsbuildinfo

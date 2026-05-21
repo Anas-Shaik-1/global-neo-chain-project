@@ -70,10 +70,19 @@ export function useTodayAttendance() {
   return { ...query, todayEntry };
 }
 
+export interface ClockInInput {
+  notes?: string;
+  isRemote?: boolean;
+  /** WGS84 decimal degrees, from `navigator.geolocation`. Required when
+   *  the backend has a geofence configured and the caller is not remote. */
+  latitude?: number;
+  longitude?: number;
+}
+
 export function useClockIn() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { notes?: string; isRemote?: boolean } = {}) => {
+    mutationFn: async (input: ClockInInput = {}) => {
       const res = await api().post("/attendance/clock-in", input);
       return res.data as AttendanceEntry;
     },

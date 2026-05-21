@@ -2,10 +2,12 @@ import { randomBytes } from "node:crypto";
 import { Types } from "mongoose";
 import { Bug, type BugStatus } from "../../models/bug.model.js";
 import { Project } from "../../models/project.model.js";
+import { Task, type TaskStatus, type TaskPriority } from "../../models/task.model.js";
 import { User, type Role } from "../../models/user.model.js";
-import { ForbiddenError, NotFoundError } from "../../lib/errors.js";
+import { ForbiddenError, NotFoundError, ValidationError } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
 import { createFileStorage } from "../../lib/storage.js";
+import { createTask } from "../tasks/tasks.service.js";
 
 const storage = createFileStorage();
 
@@ -21,6 +23,10 @@ interface PublicBug {
   projectId: string | null;
   projectName: string | null;
   projectKey: string | null;
+  /** Linked Task (created via "Create task" on a bug). */
+  linkedTaskId: string | null;
+  linkedTaskTitle: string | null;
+  linkedTaskStatus: TaskStatus | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -34,6 +40,7 @@ interface BugDocLike {
   status: BugStatus;
   createdById: Types.ObjectId;
   projectId?: Types.ObjectId | null;
+  linkedTaskId?: Types.ObjectId | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -43,10 +50,17 @@ interface ProjectInfo {
   key: string;
 }
 
+interface LinkedTaskInfo {
+  id: string;
+  title: string;
+  status: TaskStatus;
+}
+
 function toPublic(
   bug: BugDocLike,
   name: string | null,
   project: ProjectInfo | null = null,
+  linkedTask: LinkedTaskInfo | null = null,
 ): PublicBug {
   return {
     id: bug._id.toString(),
@@ -60,9 +74,23 @@ function toPublic(
     projectId: bug.projectId ? bug.projectId.toString() : null,
     projectName: project?.name ?? null,
     projectKey: project?.key ?? null,
+    linkedTaskId: linkedTask?.id ?? (bug.linkedTaskId?.toString() ?? null),
+    linkedTaskTitle: linkedTask?.title ?? null,
+    linkedTaskStatus: linkedTask?.status ?? null,
     createdAt: bug.createdAt,
     updatedAt: bug.updatedAt,
   };
+}
+
+async function loadLinkedTask(
+  taskId: Types.ObjectId | null | undefined,
+): Promise<LinkedTaskInfo | null> {
+  if (!taskId) return null;
+  const t = await Task.findById(taskId)
+    .select("_id title status")
+    .lean<{ _id: Types.ObjectId; title: string; status: TaskStatus } | null>();
+  if (!t) return null;
+  return { id: t._id.toString(), title: t.title, status: t.status };
 }
 
 /**
@@ -137,15 +165,42 @@ export async function listBugs(input: ListInput = {}) {
     }
   }
 
+  // Batch-fetch linked task info for the page so we can render the
+  // linked-task chip without an N+1 round trip.
+  const linkedTaskIds = Array.from(
+    new Set(
+      docs.map((d) => d.linkedTaskId?.toString()).filter((s): s is string => !!s),
+    ),
+  );
+  const tasksById = new Map<string, LinkedTaskInfo>();
+  if (linkedTaskIds.length > 0) {
+    const tasks = await Task.find({
+      _id: { $in: linkedTaskIds.map((id) => new Types.ObjectId(id)) },
+    })
+      .select("_id title status")
+      .lean<{ _id: Types.ObjectId; title: string; status: TaskStatus }[]>();
+    for (const t of tasks) {
+      tasksById.set(t._id.toString(), {
+        id: t._id.toString(),
+        title: t.title,
+        status: t.status,
+      });
+    }
+  }
+
   return {
     items: docs.map((b) => {
       const project = b.projectId
         ? projectsById.get(b.projectId.toString()) ?? null
         : null;
+      const linkedTask = b.linkedTaskId
+        ? tasksById.get(b.linkedTaskId.toString()) ?? null
+        : null;
       return toPublic(
         b,
         nameById.get(b.createdById.toString()) ?? null,
         project,
+        linkedTask,
       );
     }),
     total,
@@ -177,7 +232,8 @@ export async function getBug(id: string): Promise<PublicBug> {
   if (!doc) throw new NotFoundError("Bug");
   const reporter = await User.findById(doc.createdById).select("name").lean<{ name: string } | null>();
   const project = await loadProjectInfo(doc.projectId);
-  return toPublic(doc, reporter?.name ?? null, project);
+  const linkedTask = await loadLinkedTask(doc.linkedTaskId);
+  return toPublic(doc, reporter?.name ?? null, project, linkedTask);
 }
 
 interface CreateInput {
@@ -302,10 +358,12 @@ export async function updateBug(
     })().catch((err) => logger.warn({ err, id }, "bugs.updateBug notify failed"));
   }
 
+  const linkedTask = await loadLinkedTask(bug.linkedTaskId ?? null);
   return toPublic(
     bug.toObject() as unknown as BugDocLike,
     reporter?.name ?? null,
     project,
+    linkedTask,
   );
 }
 
@@ -349,9 +407,120 @@ export async function setBugImage(
 
   const reporter = await User.findById(bug.createdById).select("name").lean<{ name: string } | null>();
   const project = await loadProjectInfo(bug.projectId);
+  const linkedTask = await loadLinkedTask(bug.linkedTaskId ?? null);
   return toPublic(
     bug.toObject() as unknown as BugDocLike,
     reporter?.name ?? null,
     project,
+    linkedTask,
+  );
+}
+
+// ─── bug → task linkage ──────────────────────────────────────────────────
+
+interface CreateTaskFromBugInput {
+  /** Project to file the task into. Falls back to the bug's projectId
+   *  if the bug already has one assigned and no override is sent. */
+  projectId?: string;
+  assigneeId?: string | null;
+  priority?: TaskPriority;
+}
+
+/**
+ * Promote a bug to a task. Creates a Task whose title and description
+ * include the bug's code so the link is visible in any task view, then
+ * stamps `linkedTaskId` on the bug and `linkedBugId` on the task. The
+ * task lifecycle is independent of the bug — closing one doesn't
+ * automatically close the other (intentional; QA owns bug status, devs
+ * own task status).
+ *
+ * Edit gate matches `updateBug`: only the bug's reporter or an Admin
+ * may convert. Anyone else gets 403.
+ */
+export async function createTaskFromBug(
+  bugId: string,
+  editor: { id: string; role: Role },
+  input: CreateTaskFromBugInput,
+): Promise<PublicBug> {
+  if (!Types.ObjectId.isValid(bugId)) throw new NotFoundError("Bug");
+  const bug = await Bug.findById(bugId);
+  if (!bug) throw new NotFoundError("Bug");
+
+  const isOwner = bug.createdById.toString() === editor.id;
+  const isAdmin = editor.role === "ADMIN";
+  if (!isOwner && !isAdmin) {
+    throw new ForbiddenError("Only the bug's reporter or an Admin can create a task from it");
+  }
+
+  if (bug.linkedTaskId) {
+    throw new ValidationError(
+      "This bug is already linked to a task. Update the task directly instead.",
+    );
+  }
+
+  // Project resolution: explicit input wins, else fall back to the
+  // bug's project. If neither is set we can't file a task — Tasks
+  // belong to projects.
+  const targetProjectId =
+    input.projectId ?? bug.projectId?.toString() ?? null;
+  if (!targetProjectId) {
+    throw new ValidationError(
+      "Choose a project for the task — this bug isn't tied to one.",
+    );
+  }
+
+  // Use the existing tasks service so we share its validation, project
+  // lookup, due-date guard and activity logging. The bug code lands in
+  // the title for visibility on the kanban board.
+  const taskTitle = `[BUG-${bug.code}] ${bug.title}`.slice(0, 200);
+  const taskDescription = [
+    `Linked from bug \`${bug.code}\`.`,
+    "",
+    bug.description,
+  ].join("\n");
+  const task = await createTask(
+    {
+      projectId: targetProjectId,
+      title: taskTitle,
+      description: taskDescription,
+      priority: input.priority,
+      assigneeId: input.assigneeId ?? undefined,
+    },
+    editor.id,
+  );
+
+  // Stamp both sides of the link. We update the Task directly because
+  // the tasks service create path doesn't expose linkedBugId yet —
+  // the field is metadata only and doesn't affect any downstream flow.
+  bug.linkedTaskId = new Types.ObjectId(task.id);
+  // If the bug is still OPEN, advance it to IN_PROGRESS — picking it
+  // up as a task IS work-in-progress. WONT_FIX / FIXED stay put.
+  if (bug.status === "OPEN") bug.status = "IN_PROGRESS";
+  await bug.save();
+  await Task.findByIdAndUpdate(task.id, {
+    linkedBugId: bug._id,
+  });
+
+  logger.info(
+    {
+      bugId: bug._id.toString(),
+      bugCode: bug.code,
+      taskId: task.id,
+      projectId: targetProjectId,
+      editorId: editor.id,
+    },
+    "bug linked to task",
+  );
+
+  const reporter = await User.findById(bug.createdById)
+    .select("name")
+    .lean<{ name: string } | null>();
+  const project = await loadProjectInfo(bug.projectId);
+  const linkedTask = await loadLinkedTask(bug.linkedTaskId);
+  return toPublic(
+    bug.toObject() as unknown as BugDocLike,
+    reporter?.name ?? null,
+    project,
+    linkedTask,
   );
 }

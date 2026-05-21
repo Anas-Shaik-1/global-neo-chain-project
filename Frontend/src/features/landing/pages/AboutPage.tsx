@@ -18,7 +18,7 @@ export function AboutPage() {
             title={
               <>
                 A startup building software for{" "}
-                <span className="bg-gradient-to-r from-[hsl(258_90%_75%)] to-[hsl(270_75%_60%)] bg-clip-text text-transparent">
+                <span className="bg-[image:var(--gradient-hero-text)] bg-clip-text text-transparent">
                   what comes next.
                 </span>
               </>
@@ -49,7 +49,7 @@ export function AboutPage() {
       </section>
 
       <section className="relative mx-auto w-full max-w-7xl px-6 pb-16 sm:px-8 lg:px-12">
-        <div className="overflow-hidden rounded-3xl border border-white/10 bg-[#1a1338]/60 p-10 sm:p-14">
+        <div className="overflow-hidden rounded-3xl border border-white/10 bg-[#0c1220]/60 p-10 sm:p-14">
           <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[hsl(258_85%_75%)]">
@@ -96,7 +96,7 @@ export function AboutPage() {
           <Stat label="Time zones" value="3" />
         </div>
 
-        <div className="mt-20 overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[hsl(258_75%_60%/0.18)] via-[hsl(258_50%_25%/0.2)] to-[#0d0820] p-10 text-center sm:p-14">
+        <div className="mt-20 overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[hsl(258_75%_60%/0.18)] via-[hsl(258_50%_25%/0.2)] to-[#000000] p-10 text-center sm:p-14">
           <Mic className="mx-auto h-7 w-7 text-[hsl(258_85%_75%)]" />
           <h3 className="mt-3 font-display text-2xl font-bold tracking-tight sm:text-3xl">
             Want to work with us?
@@ -110,7 +110,7 @@ export function AboutPage() {
             <Button
               asChild
               size="lg"
-              className="rounded-full bg-[hsl(258_75%_60%)] px-7 font-semibold text-white shadow-[0_12px_30px_-10px_hsl(258_75%_60%/0.6)] hover:bg-[hsl(258_75%_55%)]"
+              className="rounded-full bg-[image:var(--gradient-brand)] px-7 font-semibold text-white shadow-[var(--shadow-cta)] transition-shadow hover:shadow-[var(--glow-purple)]"
             >
               <Link to="/#contact">
                 Talk to us
@@ -142,7 +142,7 @@ function ValueCard({
   body: string;
 }) {
   return (
-    <div className="rounded-3xl border border-white/10 bg-[#1a1338]/60 p-7 transition-colors hover:border-white/20">
+    <div className="rounded-3xl border border-white/10 bg-[#0c1220]/60 p-7 transition-colors hover:border-white/20">
       <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[hsl(258_75%_60%/0.15)] text-[hsl(258_85%_75%)]">
         <Icon className="h-5 w-5" />
       </div>
@@ -156,7 +156,7 @@ function ValueCard({
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-3xl border border-white/10 bg-[#1a1338]/60 p-8 text-center sm:p-10">
+    <div className="rounded-3xl border border-white/10 bg-[#0c1220]/60 p-8 text-center sm:p-10">
       <div className="font-display text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
         {value}
       </div>

@@ -1,15 +1,14 @@
 import { useEffect, type ReactNode } from "react";
-import { useAppSelector } from "@/app/hooks";
 
+/**
+ * Always-dark theme. The light theme has been removed; this provider
+ * exists only to ensure `<html>` always carries the `dark` class so any
+ * tooling that keys off it keeps working. Toggle UI was removed from
+ * the topbar.
+ */
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const theme = useAppSelector((s) => s.ui.theme);
-
   useEffect(() => {
-    const root = document.documentElement;
-    if (theme === "dark") root.classList.add("dark");
-    else root.classList.remove("dark");
-    localStorage.setItem("ems.theme", theme);
-  }, [theme]);
-
+    document.documentElement.classList.add("dark");
+  }, []);
   return <>{children}</>;
 }

@@ -15,6 +15,8 @@ function errorMessage(err: unknown, fallback: string): string {
 export const BUG_STATUSES = ["OPEN", "IN_PROGRESS", "FIXED", "WONT_FIX"] as const;
 export type BugStatus = (typeof BUG_STATUSES)[number];
 
+export type BugLinkedTaskStatus = "TODO" | "IN_PROGRESS" | "DONE";
+
 export interface Bug {
   id: string;
   title: string;
@@ -28,6 +30,10 @@ export interface Bug {
   projectId: string | null;
   projectName: string | null;
   projectKey: string | null;
+  /** Linked Task (set when this bug was promoted via "Create task"). */
+  linkedTaskId: string | null;
+  linkedTaskTitle: string | null;
+  linkedTaskStatus: BugLinkedTaskStatus | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -104,6 +110,37 @@ export function useUpdateBug(id: string) {
       toast.success("Bug updated");
     },
     onError: (err) => toast.error(errorMessage(err, "Could not update bug")),
+  });
+}
+
+export interface CreateTaskFromBugInput {
+  /** Optional override; defaults server-side to the bug's projectId. */
+  projectId?: string;
+  assigneeId?: string | null;
+  priority?: "LOW" | "MEDIUM" | "HIGH" | "ENHANCEMENT";
+}
+
+/**
+ * Promote a bug into a task. Returns the updated Bug (now carrying
+ * `linkedTaskId` + title/status), so callers can immediately render the
+ * "linked task" chip without a follow-up fetch.
+ */
+export function useCreateTaskFromBug(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: CreateTaskFromBugInput) => {
+      const res = await api().post(`/bugs/${id}/create-task`, input);
+      return res.data as Bug;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: bugKeys.all });
+      // The created task affects the dashboard's "Open tasks" count and
+      // every task list — invalidate both so they refetch.
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success("Task created from bug");
+    },
+    onError: (err) => toast.error(errorMessage(err, "Could not create task")),
   });
 }
 

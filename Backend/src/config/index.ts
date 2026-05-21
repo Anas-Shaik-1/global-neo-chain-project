@@ -40,6 +40,34 @@ const schema = z.object({
   // Where /contact submissions are emailed to. Defaults to MAIL_FROM if
   // unset, so a fresh deployment doesn't need to configure two mailboxes.
   CONTACT_INBOX_TO: z.string().email().optional(),
+
+  // Zoho OAuth (sign-in + sign-up via Zoho Accounts).
+  // Disabled when CLIENT_ID/SECRET are missing — the FE button is hidden
+  // and the routes return 404. Configure all four to enable.
+  // Region domains: .com (default), .in, .eu, .com.au, .jp.
+  ZOHO_CLIENT_ID: z.string().optional(),
+  ZOHO_CLIENT_SECRET: z.string().optional(),
+  /** Must exactly match the redirect URI registered with the Zoho app. */
+  ZOHO_REDIRECT_URI: z.string().url().optional(),
+  /** Override for the auth endpoint domain (`https://accounts.zoho.com`). */
+  ZOHO_ACCOUNTS_BASE_URL: z
+    .string()
+    .url()
+    .default("https://accounts.zoho.com"),
+
+  // Office geofence for clock-in. When both latitude AND longitude are set,
+  // the attendance service rejects non-remote clock-ins from outside the
+  // configured radius (default 200m). Leaving either field empty disables
+  // the geofence entirely — useful for dev or geographically distributed
+  // teams that haven't standardised on a single office.
+  OFFICE_LATITUDE: z.coerce.number().min(-90).max(90).optional(),
+  OFFICE_LONGITUDE: z.coerce.number().min(-180).max(180).optional(),
+  OFFICE_GEOFENCE_RADIUS_M: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(50_000)
+    .default(200),
 });
 
 export type Config = z.infer<typeof schema>;

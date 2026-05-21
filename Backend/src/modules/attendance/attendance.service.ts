@@ -3,10 +3,31 @@ import { Attendance, type AttendanceDoc } from "../../models/attendance.model.js
 import { User } from "../../models/user.model.js";
 import {
   ConflictError,
+  ForbiddenError,
   NotFoundError,
   ValidationError,
 } from "../../lib/errors.js";
 import { logger } from "../../lib/logger.js";
+import { config } from "../../config/index.js";
+
+// Great-circle distance between two WGS84 points in metres. Standard
+// haversine; precise to a few metres at typical geofence scales (~200m),
+// which is well below the accuracy floor of a phone's GPS chip.
+function haversineMetres(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const R = 6_371_000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+}
 
 export interface AttendanceEntryResponse {
   id: string;
@@ -102,10 +123,45 @@ function midnightUtcOf(dateStr: string): Date {
   ));
 }
 
+export interface ClockInInput {
+  notes?: string;
+  isRemote?: boolean;
+  latitude?: number;
+  longitude?: number;
+}
+
 export async function clockIn(
   userId: string,
-  input: { notes?: string; isRemote?: boolean } = {},
+  input: ClockInInput = {},
 ): Promise<AttendanceEntryResponse> {
+  // Geofence enforcement. Only kicks in when both office coordinates are
+  // configured AND the caller hasn't declared a remote clock-in. Remote
+  // workers bypass entirely (they're working from elsewhere by definition).
+  const officeLat = config.OFFICE_LATITUDE;
+  const officeLng = config.OFFICE_LONGITUDE;
+  const geofenceEnabled = officeLat !== undefined && officeLng !== undefined;
+  const isRemote = input.isRemote ?? false;
+  if (geofenceEnabled && !isRemote) {
+    if (input.latitude === undefined || input.longitude === undefined) {
+      throw new ValidationError(
+        "Location is required to clock in. Allow location access or switch to remote.",
+      );
+    }
+    const distance = haversineMetres(
+      input.latitude,
+      input.longitude,
+      officeLat,
+      officeLng,
+    );
+    if (distance > config.OFFICE_GEOFENCE_RADIUS_M) {
+      throw new ForbiddenError(
+        `You must be at the office to clock in. You are ${Math.round(
+          distance,
+        )}m away (limit ${config.OFFICE_GEOFENCE_RADIUS_M}m).`,
+      );
+    }
+  }
+
   const now = new Date();
   const date = todayUtc(now);
   const existing = await Attendance.findOne({
@@ -123,7 +179,7 @@ export async function clockIn(
       clockOut: null,
       lunchStart: null,
       lunchEnd: null,
-      isRemote: input.isRemote ?? false,
+      isRemote,
       notes: input.notes ?? null,
     });
     return toResponse(created);

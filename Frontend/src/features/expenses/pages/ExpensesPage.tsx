@@ -9,6 +9,8 @@ import {
   Plus,
   Upload,
   Wallet,
+  LayoutGrid,
+  LineChart as LineChartIcon,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,7 +33,10 @@ import { ExpensesTable } from "../components/ExpensesTable";
 import { SubmitExpenseDialog } from "../components/SubmitExpenseDialog";
 import { ExpenseDecideDialog } from "../components/ExpenseDecideDialog";
 import { ImportExpensesDialog } from "../components/ImportExpensesDialog";
+import { ExpenseCharts } from "../components/ExpenseCharts";
 import { downloadCSV, toCSV } from "@/lib/csv";
+
+type ViewMode = "table" | "charts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -327,6 +332,54 @@ function Toolbar({
   );
 }
 
+/**
+ * Segmented control to switch between the data table and the chart view.
+ * Sits at the top of each tab so users can toggle without losing context
+ * — the underlying dataset (KPI strip, totals) is shared across views.
+ */
+function ViewToggle({
+  value,
+  onChange,
+}: {
+  value: ViewMode;
+  onChange: (next: ViewMode) => void;
+}) {
+  const options: { value: ViewMode; label: string; icon: React.ReactNode }[] = [
+    { value: "table", label: "Table", icon: <LayoutGrid className="h-3.5 w-3.5" /> },
+    { value: "charts", label: "Charts", icon: <LineChartIcon className="h-3.5 w-3.5" /> },
+  ];
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Switch view"
+      className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-card/40 p-1"
+    >
+      {options.map((opt) => {
+        const active = opt.value === value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(opt.value)}
+            className={cn(
+              "inline-flex h-8 items-center gap-1.5 rounded px-3 text-xs font-medium outline-none transition-colors",
+              "focus-visible:ring-2 focus-visible:ring-primary",
+              active
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground",
+            )}
+          >
+            {opt.icon}
+            <span>{opt.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function TotalFooter({ totalInrCents }: { totalInrCents: number }) {
   return (
     <div className="flex flex-col-reverse items-stretch gap-3 border-t border-border/50 pt-4 sm:flex-row sm:items-center sm:justify-between">
@@ -351,6 +404,7 @@ function TotalFooter({ totalInrCents }: { totalInrCents: number }) {
 function MyExpensesTab() {
   const [status, setStatus] = useState<StatusFilter>("ALL");
   const [search, setSearch] = useState("");
+  const [view, setView] = useState<ViewMode>("table");
   // We always fetch the full set so the KPI strip + filter counts reflect
   // *everything*, not just the filtered slice. Filtering happens client-side.
   const q = useMyExpenses({ limit: 100 });
@@ -375,42 +429,45 @@ function MyExpensesTab() {
   return (
     <div className="space-y-5">
       <KpiStrip stats={stats} loading={q.isLoading || !q.data} />
-      <Card>
-        <CardContent className="space-y-5 pt-5">
-          <Toolbar
-            search={search}
-            onSearchChange={setSearch}
-            searchPlaceholder="Search by description or category…"
-            status={status}
-            onStatusChange={setStatus}
-            counts={counts}
-          />
-          {q.isLoading || !q.data ? (
-            <Skeleton className="h-32 w-full" />
-          ) : (
-            <>
-              <ExpensesTable
-                expenses={paginated.items}
-                showActions={false}
-                emptyState={
-                  search || status !== "ALL"
-                    ? "No expenses match your filters."
-                    : "You haven't submitted any expenses yet. Click + Submit expense to get started."
-                }
-              />
-              <Pagination
-                page={paginated.page}
-                pageSize={paginated.pageSize}
-                totalPages={paginated.totalPages}
-                totalItems={paginated.totalItems}
-                onPageChange={paginated.setPage}
-                onPageSizeChange={paginated.setPageSize}
-              />
-              {items.length > 0 && <TotalFooter totalInrCents={totalInrCents} />}
-            </>
-          )}
-        </CardContent>
-      </Card>
+      <div className="flex items-center justify-end">
+        <ViewToggle value={view} onChange={setView} />
+      </div>
+      {q.isLoading || !q.data ? (
+        <Skeleton className="h-32 w-full" />
+      ) : view === "charts" ? (
+        <ExpenseCharts items={items} groupBy="category" />
+      ) : (
+        <Card>
+          <CardContent className="space-y-5 pt-5">
+            <Toolbar
+              search={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Search by description or category…"
+              status={status}
+              onStatusChange={setStatus}
+              counts={counts}
+            />
+            <ExpensesTable
+              expenses={paginated.items}
+              showActions={false}
+              emptyState={
+                search || status !== "ALL"
+                  ? "No expenses match your filters."
+                  : "You haven't submitted any expenses yet. Click + Submit expense to get started."
+              }
+            />
+            <Pagination
+              page={paginated.page}
+              pageSize={paginated.pageSize}
+              totalPages={paginated.totalPages}
+              totalItems={paginated.totalItems}
+              onPageChange={paginated.setPage}
+              onPageSizeChange={paginated.setPageSize}
+            />
+            {items.length > 0 && <TotalFooter totalInrCents={totalInrCents} />}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
@@ -424,6 +481,7 @@ function ApprovalQueueTab({
 }) {
   const [status, setStatus] = useState<StatusFilter>("PENDING");
   const [search, setSearch] = useState("");
+  const [view, setView] = useState<ViewMode>("table");
   const q = useAllExpenses({ limit: 100 });
   // Salaries live in a dedicated tab; never show in the approval queue.
   const items = (q.data?.items ?? []).filter((e) => e.category !== "SALARY");
@@ -445,45 +503,48 @@ function ApprovalQueueTab({
   return (
     <div className="space-y-5">
       <KpiStrip stats={stats} loading={q.isLoading || !q.data} />
-      <Card>
-        <CardContent className="space-y-5 pt-5">
-          <Toolbar
-            search={search}
-            onSearchChange={setSearch}
-            searchPlaceholder="Search by description, category, or submitter…"
-            status={status}
-            onStatusChange={setStatus}
-            counts={counts}
-          />
-          {q.isLoading || !q.data ? (
-            <Skeleton className="h-32 w-full" />
-          ) : (
-            <>
-              <ExpensesTable
-                expenses={paginated.items}
-                showOwner
-                showActions
-                onApprove={onApprove}
-                onReject={onReject}
-                emptyState={
-                  status === "PENDING"
-                    ? "No expenses awaiting your decision. 🎉"
-                    : "No expenses match this filter."
-                }
-              />
-              <Pagination
-                page={paginated.page}
-                pageSize={paginated.pageSize}
-                totalPages={paginated.totalPages}
-                totalItems={paginated.totalItems}
-                onPageChange={paginated.setPage}
-                onPageSizeChange={paginated.setPageSize}
-              />
-              {items.length > 0 && <TotalFooter totalInrCents={totalInrCents} />}
-            </>
-          )}
-        </CardContent>
-      </Card>
+      <div className="flex items-center justify-end">
+        <ViewToggle value={view} onChange={setView} />
+      </div>
+      {q.isLoading || !q.data ? (
+        <Skeleton className="h-32 w-full" />
+      ) : view === "charts" ? (
+        <ExpenseCharts items={items} groupBy="category" />
+      ) : (
+        <Card>
+          <CardContent className="space-y-5 pt-5">
+            <Toolbar
+              search={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Search by description, category, or submitter…"
+              status={status}
+              onStatusChange={setStatus}
+              counts={counts}
+            />
+            <ExpensesTable
+              expenses={paginated.items}
+              showOwner
+              showActions
+              onApprove={onApprove}
+              onReject={onReject}
+              emptyState={
+                status === "PENDING"
+                  ? "No expenses awaiting your decision. 🎉"
+                  : "No expenses match this filter."
+              }
+            />
+            <Pagination
+              page={paginated.page}
+              pageSize={paginated.pageSize}
+              totalPages={paginated.totalPages}
+              totalItems={paginated.totalItems}
+              onPageChange={paginated.setPage}
+              onPageSizeChange={paginated.setPageSize}
+            />
+            {items.length > 0 && <TotalFooter totalInrCents={totalInrCents} />}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
@@ -496,6 +557,7 @@ function ApprovalQueueTab({
  */
 function SalariesTab() {
   const [search, setSearch] = useState("");
+  const [view, setView] = useState<ViewMode>("table");
   const q = useAllExpenses({ limit: 100 });
   const all = q.data?.items ?? [];
   const items = useMemo(
@@ -540,41 +602,42 @@ function SalariesTab() {
           tone="default"
         />
       </div>
-      <Card>
-        <CardContent className="space-y-5 pt-5">
-          <div className="lg:max-w-md lg:flex-1">
-            <SearchBar
-              value={search}
-              onChange={setSearch}
-              placeholder="Search by description or employee…"
-              ariaLabel="Search salaries"
+      <div className="flex items-center justify-end">
+        <ViewToggle value={view} onChange={setView} />
+      </div>
+      {q.isLoading || !q.data ? (
+        <Skeleton className="h-32 w-full" />
+      ) : view === "charts" ? (
+        <ExpenseCharts items={items} groupBy="user" showStatus={false} />
+      ) : (
+        <Card>
+          <CardContent className="space-y-5 pt-5">
+            <div className="lg:max-w-md lg:flex-1">
+              <SearchBar
+                value={search}
+                onChange={setSearch}
+                placeholder="Search by description or employee…"
+                ariaLabel="Search salaries"
+              />
+            </div>
+            <ExpensesTable
+              expenses={paginated.items}
+              showOwner
+              showActions={false}
+              emptyState="No salary entries yet. Generate a payslip from the Payroll page to see one here."
             />
-          </div>
-          {q.isLoading || !q.data ? (
-            <Skeleton className="h-32 w-full" />
-          ) : (
-            <>
-              <ExpensesTable
-                expenses={paginated.items}
-                showOwner
-                showActions={false}
-                emptyState="No salary entries yet. Generate a payslip from the Payroll page to see one here."
-              />
-              <Pagination
-                page={paginated.page}
-                pageSize={paginated.pageSize}
-                totalPages={paginated.totalPages}
-                totalItems={paginated.totalItems}
-                onPageChange={paginated.setPage}
-                onPageSizeChange={paginated.setPageSize}
-              />
-              {items.length > 0 && (
-                <TotalFooter totalInrCents={totalInrCents} />
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
+            <Pagination
+              page={paginated.page}
+              pageSize={paginated.pageSize}
+              totalPages={paginated.totalPages}
+              totalItems={paginated.totalItems}
+              onPageChange={paginated.setPage}
+              onPageSizeChange={paginated.setPageSize}
+            />
+            {items.length > 0 && <TotalFooter totalInrCents={totalInrCents} />}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

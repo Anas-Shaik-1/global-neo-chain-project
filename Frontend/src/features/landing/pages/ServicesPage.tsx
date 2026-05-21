@@ -1,125 +1,18 @@
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
-import {
-  ArrowRight,
-  BarChart3,
-  Bot,
-  Cloud,
-  Code2,
-  Database,
-  GitBranch,
-  Layers,
-  type LucideIcon,
-} from "lucide-react";
+import { ArrowRight, GitBranch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarketingShell, SectionHeading } from "../components/MarketingChrome";
-import { ServiceVisual, type Topic } from "../components/ServiceVisual";
-
-interface ServiceGroup {
-  id: Topic;
-  eyebrow: string;
-  title: string;
-  body: string;
-  bullets: string[];
-  Icon: LucideIcon;
-  tone: string;
-  /** Optional override — drop a real photo at /public/services/<id>.jpg. */
-  image?: string;
-}
-
-const SERVICES: ServiceGroup[] = [
-  {
-    id: "ai",
-    eyebrow: "01 — AI & ML",
-    title: "Custom AI models, trained on your data.",
-    body: "From a first-pass classifier to a domain-tuned LLM that ships behind your product, we build the model, the data pipeline that feeds it, and the eval harness that proves it works.",
-    bullets: [
-      "Predictive maintenance, demand forecasting, fraud detection",
-      "Fine-tuned LLMs for internal copilots & document Q&A",
-      "Retrieval-augmented generation (RAG) on private corpora",
-      "MLOps: training, evaluation, drift monitoring",
-    ],
-    Icon: Bot,
-    tone: "from-violet-500/20 to-fuchsia-500/0",
-  },
-  {
-    id: "fullstack",
-    eyebrow: "02 — Full-stack engineering",
-    title: "Apps that ship — MERN, Python, Java.",
-    body: "Production web and mobile apps end-to-end. We pick the stack that fits your team and constraints, then build it like we'll be the ones supporting it on call (because we usually are).",
-    bullets: [
-      "MERN: React / Next.js, Node, MongoDB, Express",
-      "Python full-stack: FastAPI, Django, Postgres, Celery",
-      "Java full-stack: Spring Boot, JPA, Postgres / Oracle",
-      "Mobile: React Native, native Android / iOS",
-    ],
-    Icon: Code2,
-    tone: "from-cyan-500/20 to-sky-500/0",
-  },
-  {
-    id: "data",
-    eyebrow: "03 — Data & analytics",
-    title: "Pipelines that move clean data on time.",
-    body: "Whether you need a single dashboard or a warehouse-grade analytics platform, we ingest from your sources, model the data, and put numbers in front of decision-makers.",
-    bullets: [
-      "ETL / ELT pipelines (Airflow, dbt, Spark)",
-      "Warehouses: Snowflake, BigQuery, Redshift, Postgres",
-      "Embedded dashboards: Metabase, Superset, Looker",
-      "Self-serve analytics for ops, finance, and product",
-    ],
-    Icon: BarChart3,
-    tone: "from-emerald-500/20 to-teal-500/0",
-  },
-  {
-    id: "datascience",
-    eyebrow: "04 — Data science",
-    title: "Statistical insight that drives business calls.",
-    body: "Bayesian A/B tests, churn modelling, customer segmentation, time-series forecasting — work that turns business questions into defensible numbers.",
-    bullets: [
-      "Customer segmentation & cohort analysis",
-      "Forecasting: revenue, demand, capacity",
-      "Causal inference & uplift modelling",
-      "Notebooks → production: model registry + serving",
-    ],
-    Icon: Database,
-    tone: "from-amber-500/20 to-orange-500/0",
-  },
-  {
-    id: "devops",
-    eyebrow: "05 — DevOps & cloud",
-    title: "Infrastructure that doesn't wake your team up.",
-    body: "CI/CD pipelines, container orchestration, infra-as-code, observability — the boring stuff that decides whether your team ships every week or fights fires.",
-    bullets: [
-      "Kubernetes, Docker, Helm",
-      "Terraform / Pulumi infra-as-code",
-      "GitHub Actions / GitLab CI / ArgoCD",
-      "AWS, GCP, Azure — multi-cloud where it makes sense",
-    ],
-    Icon: Cloud,
-    tone: "from-blue-500/20 to-indigo-500/0",
-  },
-  {
-    id: "products",
-    eyebrow: "06 — Product engineering",
-    title: "From idea to first paying customer.",
-    body: "We've built and shipped our own EMS workspace — same playbook for yours. Discovery, design, build, deploy, hand-off documented in working code.",
-    bullets: [
-      "0→1 MVPs with a 6–10 week ship cadence",
-      "Design systems, component libraries",
-      "Product analytics & experimentation tooling",
-      "Hand-off with full source, infra, and runbooks",
-    ],
-    Icon: Layers,
-    tone: "from-rose-500/20 to-pink-500/0",
-  },
-];
+import { ServiceVisual } from "../components/ServiceVisual";
+import { SERVICES, type ServiceGroup } from "../data/services";
 
 function ServiceCard({ s }: { s: ServiceGroup }) {
   const { Icon } = s;
   return (
-    <article
+    <Link
+      to={`/services/${s.slug}`}
       id={s.id}
-      className="group relative scroll-mt-24 overflow-hidden rounded-3xl border border-white/10 bg-[#1a1338]/60 p-5 transition-colors hover:border-white/20 sm:p-6"
+      className="group relative block scroll-mt-24 overflow-hidden rounded-3xl border border-white/10 bg-[#0c1220]/60 p-5 transition-all hover:-translate-y-0.5 hover:border-white/20 hover:bg-[#181d27]/80 hover:shadow-[0_24px_70px_-24px_hsl(258_80%_60%/0.4)] sm:p-6"
     >
       <div
         aria-hidden
@@ -128,7 +21,7 @@ function ServiceCard({ s }: { s: ServiceGroup }) {
       <ServiceVisual topic={s.id} image={s.image} alt={s.title} />
       <div className="relative px-2 pt-6 sm:px-3">
         <div className="flex items-center gap-3">
-          <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-[#0d0820]">
+          <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-[#000000]">
             <Icon className="h-4 w-4 text-[hsl(258_85%_75%)]" />
           </div>
           <div className="text-[10px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
@@ -149,8 +42,11 @@ function ServiceCard({ s }: { s: ServiceGroup }) {
             </li>
           ))}
         </ul>
+        <div className="mt-5 inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-[hsl(258_85%_75%)] opacity-0 transition-opacity group-hover:opacity-100">
+          Read the page <ArrowRight className="h-3 w-3" />
+        </div>
       </div>
-    </article>
+    </Link>
   );
 }
 
@@ -168,7 +64,7 @@ export function ServicesPage() {
             title={
               <>
                 Software, models, and infrastructure —{" "}
-                <span className="bg-gradient-to-r from-[hsl(258_90%_75%)] to-[hsl(270_75%_60%)] bg-clip-text text-transparent">
+                <span className="bg-[image:var(--gradient-hero-text)] bg-clip-text text-transparent">
                   shipped end-to-end.
                 </span>
               </>
@@ -185,7 +81,7 @@ export function ServicesPage() {
           ))}
         </div>
 
-        <div className="mt-20 overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[hsl(258_75%_60%/0.18)] via-[hsl(258_50%_25%/0.2)] to-[#0d0820] p-10 text-center sm:p-14">
+        <div className="mt-20 overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[hsl(258_75%_60%/0.18)] via-[hsl(258_50%_25%/0.2)] to-[#000000] p-10 text-center sm:p-14">
           <h3 className="font-display text-2xl font-bold tracking-tight sm:text-3xl">
             Have a project in mind?
           </h3>
@@ -197,7 +93,7 @@ export function ServicesPage() {
             <Button
               asChild
               size="lg"
-              className="rounded-full bg-[hsl(258_75%_60%)] px-7 font-semibold text-white shadow-[0_12px_30px_-10px_hsl(258_75%_60%/0.6)] hover:bg-[hsl(258_75%_55%)]"
+              className="rounded-full bg-[image:var(--gradient-brand)] px-7 font-semibold text-white shadow-[var(--shadow-cta)] transition-shadow hover:shadow-[var(--glow-purple)]"
             >
               <Link to="/#contact">
                 Talk to us

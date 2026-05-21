@@ -24,6 +24,7 @@ import {
 } from "./schemas";
 import { AuthShell } from "./components/AuthShell";
 import { TotpInput } from "./components/TotpInput";
+import { ZohoSignInButton } from "./components/ZohoSignInButton";
 
 const FEATURE_PILLS = [
   "Time tracking & approvals",
@@ -187,6 +188,16 @@ export function LoginPage() {
               isPending={credentialsForm.formState.isSubmitting}
               label="Sign in"
             />
+
+            <div className="flex items-center gap-3">
+              <span className="h-px flex-1 bg-border/50" />
+              <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-muted-foreground/60">
+                or
+              </span>
+              <span className="h-px flex-1 bg-border/50" />
+            </div>
+
+            <ZohoSignInButton mode="signin" />
           </form>
         </Form>
       ) : (

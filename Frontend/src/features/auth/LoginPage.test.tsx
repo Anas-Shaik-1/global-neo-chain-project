@@ -5,6 +5,7 @@ import MockAdapter from "axios-mock-adapter";
 import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { authSlice } from "./authSlice";
 import { uiSlice } from "@/features/ui/uiSlice";
 import { presenceSlice } from "@/features/chat/presenceSlice";
@@ -31,17 +32,21 @@ beforeEach(() => {
   mock = new MockAdapter(getApi());
 });
 
-const renderPage = () =>
-  render(
-    <Provider store={store}>
-      <MemoryRouter initialEntries={["/login"]}>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/dashboard" element={<div>dashboard</div>} />
-        </Routes>
-      </MemoryRouter>
-    </Provider>,
+const renderPage = () => {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <Provider store={store}>
+        <MemoryRouter initialEntries={["/login"]}>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/dashboard" element={<div>dashboard</div>} />
+          </Routes>
+        </MemoryRouter>
+      </Provider>
+    </QueryClientProvider>,
   );
+};
 
 describe("LoginPage", () => {
   it("renders email/password fields", () => {

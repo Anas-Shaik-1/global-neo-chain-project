@@ -76,6 +76,12 @@ export const ClockInBody = z
   .object({
     notes: z.string().max(500).optional(),
     isRemote: z.boolean().optional(),
+    // Browser-reported coordinates. Required by the service only when the
+    // server has a geofence configured AND the caller is not clocking in
+    // as remote; the schema leaves them optional so dev / non-geofenced
+    // deployments don't break.
+    latitude: z.number().min(-90).max(90).optional(),
+    longitude: z.number().min(-180).max(180).optional(),
   })
   .openapi("ClockInBody");
 

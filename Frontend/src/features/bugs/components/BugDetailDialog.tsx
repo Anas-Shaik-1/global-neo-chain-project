@@ -1,7 +1,16 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Bug as BugIcon, Check, Copy, Image as ImageIcon, Pencil } from "lucide-react";
+import {
+  ArrowUpRight,
+  Bug as BugIcon,
+  Check,
+  Copy,
+  Image as ImageIcon,
+  ListChecks,
+  Pencil,
+} from "lucide-react";
+import { Link } from "react-router-dom";
 import {
   Dialog,
   DialogContent,
@@ -32,6 +41,7 @@ import { StatusBadge } from "@/components/common/StatusBadge";
 import { cn } from "@/lib/utils";
 import { useAppSelector } from "@/app/hooks";
 import {
+  useCreateTaskFromBug,
   useUpdateBug,
   useUploadBugImage,
   type Bug,
@@ -71,6 +81,7 @@ export function BugDetailDialog({ bug, open, onOpenChange }: Props) {
 
   const update = useUpdateBug(bug?.id ?? "");
   const upload = useUploadBugImage(bug?.id ?? "");
+  const promoteToTask = useCreateTaskFromBug(bug?.id ?? "");
 
   const form = useForm<EditBugValues>({
     resolver: zodResolver(EditBugSchema),
@@ -244,6 +255,65 @@ export function BugDetailDialog({ bug, open, onOpenChange }: Props) {
                 {bug.description}
               </pre>
             </div>
+
+            {/* ── Linked task strip ────────────────────────────────── */}
+            {bug.linkedTaskId ? (
+              <Link
+                to="/tasks"
+                className="group flex items-center gap-3 rounded-md border border-primary/30 bg-primary/[0.04] p-3 text-sm transition-colors hover:border-primary/60 hover:bg-primary/[0.08]"
+              >
+                <ListChecks className="h-4 w-4 shrink-0 text-primary" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground">
+                    Linked task
+                  </div>
+                  <div className="truncate text-foreground/95">
+                    {bug.linkedTaskTitle ?? "Open in Tasks"}
+                  </div>
+                </div>
+                {bug.linkedTaskStatus && (
+                  <span
+                    className={cn(
+                      "rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.18em]",
+                      bug.linkedTaskStatus === "DONE"
+                        ? "border-emerald-500/40 bg-emerald-500/[0.08] text-emerald-300"
+                        : bug.linkedTaskStatus === "IN_PROGRESS"
+                          ? "border-sky-500/40 bg-sky-500/[0.08] text-sky-300"
+                          : "border-amber-500/40 bg-amber-500/[0.08] text-amber-300",
+                    )}
+                  >
+                    {bug.linkedTaskStatus.replace("_", " ").toLowerCase()}
+                  </span>
+                )}
+                <ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary" />
+              </Link>
+            ) : (
+              canEdit && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-dashed border-border/60 bg-card/30 p-3">
+                  <div className="text-xs text-muted-foreground">
+                    {bug.projectId
+                      ? `Promote this bug to a task in ${bug.projectName ?? "its project"} so the engineering team can pick it up on the kanban.`
+                      : "This bug isn't tied to a project — assign one in Edit before creating a task, or use the kanban directly."}
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="gap-2"
+                    disabled={!bug.projectId || promoteToTask.isPending}
+                    onClick={() => promoteToTask.mutate({})}
+                    title={
+                      bug.projectId
+                        ? `Create a task in ${bug.projectName ?? "this project"}`
+                        : "Assign a project to this bug first"
+                    }
+                  >
+                    <ListChecks className="h-3.5 w-3.5" />
+                    {promoteToTask.isPending ? "Creating…" : "Create task"}
+                  </Button>
+                </div>
+              )
+            )}
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">

@@ -24,21 +24,22 @@ export function PageHeader({ title, description, actions, eyebrow, className }: 
   return (
     <header
       className={cn(
-        "flex flex-col gap-4 border-b border-border/50 pb-5 sm:flex-row sm:items-end sm:justify-between sm:pb-6",
+        "flex flex-col gap-4 border-b border-border/40 pb-6 sm:flex-row sm:items-end sm:justify-between sm:pb-7",
         className,
       )}
     >
-      <div className="min-w-0 space-y-1.5">
+      <div className="min-w-0 space-y-2">
         {eyebrow && (
-          <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-primary/80">
+          <div className="inline-flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-primary/85">
+            <span aria-hidden className="h-px w-5 bg-primary/60" />
             {eyebrow}
           </div>
         )}
-        <h1 className="font-display text-2xl font-semibold leading-tight tracking-tight text-foreground sm:text-3xl">
+        <h1 className="font-display text-[26px] font-semibold leading-[1.15] tracking-tight text-foreground sm:text-[32px]">
           {title}
         </h1>
         {description && (
-          <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+          <p className="max-w-2xl text-[13.5px] leading-relaxed text-muted-foreground">
             {description}
           </p>
         )}

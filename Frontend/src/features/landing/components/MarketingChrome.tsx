@@ -6,13 +6,12 @@ import { cn } from "@/lib/utils";
 
 /**
  * Shared chrome for every public marketing page (`/`, `/team`, `/services`,
- * `/industries`, `/about`). Wraps content with the layered violet backdrop,
- * the top navigation, and the footer so each page only owns its own
- * sections — not the page frame.
+ * `/industries`, `/about`). Wraps content with a pure-black canvas, the
+ * top navigation, and the footer — modelled on www.globalneochain.com.
  */
 export function MarketingShell({ children }: { children: ReactNode }) {
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#0d0820] text-foreground">
+    <div className="relative min-h-screen overflow-hidden bg-black text-foreground">
       <BackgroundLayers />
       <Topbar />
       <main className="relative z-10">{children}</main>
@@ -22,6 +21,9 @@ export function MarketingShell({ children }: { children: ReactNode }) {
 }
 
 export function BackgroundLayers() {
+  // Pure black canvas with two restrained blue radial accents plus a
+  // whisper of grain. Matches the minimalist look of the production GNC
+  // site — no violet wash, no diagonal gradient.
   return (
     <>
       <div
@@ -29,10 +31,9 @@ export function BackgroundLayers() {
         className="pointer-events-none absolute inset-0 -z-10"
         style={{
           backgroundImage: [
-            "radial-gradient(circle at 18% 12%, hsla(265 85% 55% / 0.22) 0px, transparent 45%)",
-            "radial-gradient(circle at 82% 30%, hsla(258 80% 60% / 0.18) 0px, transparent 50%)",
-            "radial-gradient(circle at 30% 85%, hsla(275 75% 55% / 0.18) 0px, transparent 50%)",
-            "linear-gradient(180deg, #0d0820 0%, #120c2e 50%, #0d0820 100%)",
+            "radial-gradient(circle at 20% 10%, rgba(37, 99, 235, 0.10) 0px, transparent 50%)",
+            "radial-gradient(circle at 80% 90%, rgba(37, 99, 235, 0.06) 0px, transparent 55%)",
+            "linear-gradient(180deg, #000 0%, #000 100%)",
           ].join(","),
         }}
       />
@@ -74,23 +75,32 @@ interface NavGroup {
   to?: string;
 }
 
-// Real routes — every entry resolves to a page on this domain.
+// Real routes — every entry resolves to a page on this domain. Each
+// dropdown item is now its own dedicated page under /services/<slug> or
+// /industries/<slug>; "All …" lands on the index that links to all of them.
 const NAV_GROUPS: NavGroup[] = [
   {
     label: "Services",
     items: [
-      { label: "AI & ML models", hint: "Custom-trained, production-ready", to: "/services#ai" },
-      { label: "Full-stack engineering", hint: "MERN · Python · Java", to: "/services#fullstack" },
-      { label: "Data & analytics", hint: "Pipelines, dashboards, ML", to: "/services#data" },
-      { label: "DevOps & cloud", hint: "CI/CD, infra-as-code", to: "/services#devops" },
+      { label: "AI & ML models", hint: "Custom-trained, production-ready", to: "/services/ai" },
+      { label: "Full-stack engineering", hint: "MERN · Python · Java", to: "/services/fullstack" },
+      { label: "Data & analytics", hint: "Pipelines, dashboards, ML", to: "/services/data" },
+      { label: "Data science", hint: "Forecasting, segmentation, A/B", to: "/services/data-science" },
+      { label: "DevOps & cloud", hint: "CI/CD, infra-as-code", to: "/services/devops" },
+      { label: "Product engineering", hint: "0→1 MVPs in 6–10 weeks", to: "/services/products" },
+      { label: "All services", hint: "Compare all six capabilities", to: "/services" },
     ],
   },
   {
     label: "Industries",
     items: [
-      { label: "Oil & energy", hint: "Predictive maintenance, IoT", to: "/industries#oil" },
-      { label: "E-commerce", hint: "Storefronts, payments, CRO", to: "/industries#ecommerce" },
-      { label: "All industries", hint: "Logistics, retail, hospitality…", to: "/industries" },
+      { label: "Oil & energy", hint: "Predictive maintenance, IoT", to: "/industries/oil" },
+      { label: "E-commerce", hint: "Storefronts, payments, CRO", to: "/industries/ecommerce" },
+      { label: "Logistics & cold storage", hint: "Fleet, cold-chain, attendance", to: "/industries/logistics" },
+      { label: "Construction & contracting", hint: "Project boards, payroll, expenses", to: "/industries/construction" },
+      { label: "Fashion & retail", hint: "Per-store chat, merchandising", to: "/industries/fashion" },
+      { label: "Hospitality", hint: "Shifts, briefings, seasonal HR", to: "/industries/hospitality" },
+      { label: "All industries", hint: "Beverages, fragrance & more", to: "/industries" },
     ],
   },
   { label: "Team", to: "/team" },
@@ -101,7 +111,7 @@ const NAV_GROUPS: NavGroup[] = [
 export function Topbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   return (
-    <header className="relative z-30 border-b border-white/5 bg-[#0d0820]/70 backdrop-blur-md">
+    <header className="relative z-30 border-b border-white/5 bg-[#000000]/70 backdrop-blur-md">
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-6 px-6 py-4 sm:px-8 lg:px-12">
         <LandingWordmark />
 
@@ -128,7 +138,7 @@ export function Topbar() {
           <Button
             asChild
             size="sm"
-            className="rounded-full bg-[hsl(258_75%_60%)] px-5 font-semibold text-white shadow-[0_8px_24px_-8px_hsl(258_75%_60%/0.6)] hover:bg-[hsl(258_75%_55%)]"
+            className="rounded-full border border-white/10 bg-[image:var(--gradient-brand)] px-5 font-semibold text-white shadow-[var(--shadow-cta)] transition-shadow hover:shadow-[var(--glow-purple)]"
           >
             <Link to="/register">Get started</Link>
           </Button>
@@ -145,7 +155,7 @@ export function Topbar() {
       </div>
 
       {mobileOpen && (
-        <div className="border-t border-white/5 bg-[#0d0820]/95 px-6 py-4 lg:hidden">
+        <div className="border-t border-white/5 bg-[#000000]/95 px-6 py-4 lg:hidden">
           <ul className="space-y-1">
             {NAV_GROUPS.map((g) =>
               g.items ? (
@@ -195,7 +205,7 @@ export function Topbar() {
               <Link
                 to="/register"
                 onClick={() => setMobileOpen(false)}
-                className="block rounded-md bg-[hsl(258_75%_60%)] px-3 py-2 text-center text-sm font-semibold text-white shadow-[0_8px_24px_-8px_hsl(258_75%_60%/0.6)] hover:bg-[hsl(258_75%_55%)]"
+                className="block rounded-md border border-white/10 bg-[image:var(--gradient-brand)] px-3 py-2 text-center text-sm font-semibold text-white shadow-[var(--shadow-cta)]"
               >
                 Get started
               </Link>
@@ -246,20 +256,32 @@ function NavDropdown({ group }: { group: NavGroup }) {
       {open && (
         <div
           role="menu"
-          className="absolute left-0 top-full mt-2 w-72 rounded-xl border border-white/10 bg-[#1a1338] p-2 shadow-2xl shadow-black/50 backdrop-blur-md"
+          className="absolute left-0 top-full mt-2 w-80 rounded-xl border border-white/10 bg-[#0c1220] p-2 shadow-2xl shadow-black/50 backdrop-blur-md"
         >
-          {group.items?.map((it) => (
-            <Link
-              key={it.label}
-              role="menuitem"
-              to={it.to}
-              onClick={() => setOpen(false)}
-              className="block rounded-lg px-3 py-2.5 transition-colors hover:bg-white/5"
-            >
-              <div className="text-sm font-semibold text-foreground">{it.label}</div>
-              <div className="mt-0.5 text-xs text-muted-foreground">{it.hint}</div>
-            </Link>
-          ))}
+          {group.items?.map((it, i, arr) => {
+            // Visually separate the trailing "All …" overview link from the
+            // per-topic items above so the dropdown reads as two groups.
+            const isAllLink = i === arr.length - 1 && it.label.startsWith("All ");
+            return (
+              <div key={it.label}>
+                {isAllLink && (
+                  <div className="my-1 h-px bg-white/10" aria-hidden />
+                )}
+                <Link
+                  role="menuitem"
+                  to={it.to}
+                  onClick={() => setOpen(false)}
+                  className="group/menuitem flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-white/5"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-foreground">{it.label}</div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">{it.hint}</div>
+                  </div>
+                  <ChevronDown className="mt-1 h-3 w-3 shrink-0 -rotate-90 text-muted-foreground/50 transition-all group-hover/menuitem:translate-x-0.5 group-hover/menuitem:text-[hsl(258_85%_75%)]" />
+                </Link>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -268,7 +290,7 @@ function NavDropdown({ group }: { group: NavGroup }) {
 
 export function FooterBar() {
   return (
-    <footer className="relative z-10 border-t border-white/10 bg-[#07041a]">
+    <footer className="relative z-10 border-t border-white/10 bg-[#000000]">
       <div className="mx-auto w-full max-w-7xl px-6 py-14 sm:px-8 lg:px-12">
         <div className="grid gap-12 lg:grid-cols-[1.4fr_2fr]">
           <div className="space-y-4">

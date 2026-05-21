@@ -356,15 +356,60 @@ export function AttendancePage() {
     [data],
   );
 
-  function onClockIn() {
+  async function onClockIn() {
     setActionError(null);
-    clockInMut.mutate(
-      { isRemote: isRemoteDraft },
-      {
+
+    function submit(input: { isRemote: boolean; latitude?: number; longitude?: number }) {
+      clockInMut.mutate(input, {
         onError: (err) =>
           setActionError((err as Error).message ?? "Failed to clock in"),
-      },
-    );
+      });
+    }
+
+    // Remote clock-ins bypass the geofence — fire immediately without
+    // touching geolocation.
+    if (isRemoteDraft) {
+      submit({ isRemote: true });
+      return;
+    }
+
+    // In-office clock-in: try to capture coordinates so the server can
+    // verify office presence. If the browser doesn't expose geolocation
+    // (older browsers, insecure contexts) we send the request without
+    // coords — the backend will accept it if no geofence is configured,
+    // and return a clear error otherwise.
+    if (!("geolocation" in navigator)) {
+      submit({ isRemote: false });
+      return;
+    }
+
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          maximumAge: 60_000,
+          timeout: 15_000,
+        });
+      });
+      submit({
+        isRemote: false,
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+      });
+    } catch (geoErr) {
+      // We don't fail the clock-in client-side on a geolocation error —
+      // the backend may not have a geofence configured, in which case
+      // the request must still succeed. Surface a tip via the action
+      // banner so the user knows why they're seeing a server error if
+      // one comes back.
+      const code = (geoErr as GeolocationPositionError | undefined)?.code;
+      if (code === 1 /* PERMISSION_DENIED */) {
+        setActionError(
+          "Location access was denied. If your team requires office presence, allow location or switch to remote.",
+        );
+      }
+      submit({ isRemote: false });
+    }
   }
 
   function onClockOut() {

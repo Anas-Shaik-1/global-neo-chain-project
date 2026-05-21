@@ -98,7 +98,7 @@ export function ContactForm() {
     <form
       onSubmit={form.handleSubmit(onSubmit)}
       noValidate
-      className="rounded-2xl border border-white/10 bg-[#0d0820]/60 p-6 sm:p-8"
+      className="rounded-2xl border border-white/10 bg-[#000000]/60 p-6 sm:p-8"
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <Field
@@ -191,7 +191,7 @@ export function ContactForm() {
         <Button
           type="submit"
           disabled={form.formState.isSubmitting}
-          className="rounded-full bg-[hsl(258_75%_60%)] px-6 font-semibold text-white shadow-[0_8px_24px_-8px_hsl(258_75%_60%/0.6)] hover:bg-[hsl(258_75%_55%)]"
+          className="rounded-full bg-[image:var(--gradient-brand)] px-6 font-semibold text-white shadow-[var(--shadow-cta)] transition-shadow hover:shadow-[var(--glow-purple)]"
         >
           {form.formState.isSubmitting ? "Sending…" : "Send message"}
           {!form.formState.isSubmitting && <ArrowRight className="ml-1 h-4 w-4" />}

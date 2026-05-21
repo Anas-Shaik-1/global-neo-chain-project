@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate } from "react-router-dom";
 import {
   ArrowRight,
@@ -37,13 +37,55 @@ export function LandingPage() {
   return (
     <MarketingShell>
       <Hero />
-      <TrustedMarquee />
-      <ServicesPreview />
-      <IndustriesPreview />
-      <FlagshipProduct />
-      <TeamPreview />
-      <ContactCta />
+      <Reveal><TrustedMarquee /></Reveal>
+      <Reveal><ServicesPreview /></Reveal>
+      <Reveal><IndustriesPreview /></Reveal>
+      <Reveal><FlagshipProduct /></Reveal>
+      <Reveal><TeamPreview /></Reveal>
+      <Reveal><ContactCta /></Reveal>
     </MarketingShell>
+  );
+}
+
+/**
+ * Reveal — fades a section in with a small upward translate the first time
+ * it intersects the viewport. CSS does the heavy lifting; this just toggles
+ * `is-visible`. Stops observing after the first reveal so it never re-runs.
+ */
+function Reveal({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [shown, setShown] = useState(false);
+
+  useEffect(() => {
+    if (shown) return;
+    const node = ref.current;
+    if (!node) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setShown(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setShown(true);
+            io.disconnect();
+            return;
+          }
+        }
+      },
+      // Trigger slightly before the section is fully in view so the reveal
+      // feels timely rather than late.
+      { rootMargin: "0px 0px -10% 0px", threshold: 0.05 },
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, [shown]);
+
+  return (
+    <div ref={ref} className={`reveal-on-scroll${shown ? " is-visible" : ""}`}>
+      {children}
+    </div>
   );
 }
 
@@ -66,7 +108,7 @@ function Hero() {
 
           <h1 className="font-display text-[40px] font-extrabold leading-[1.05] tracking-[-0.025em] text-foreground text-balance sm:text-[52px] lg:text-[60px]">
             <span className="block">Engineering teams,</span>
-            <span className="block bg-gradient-to-r from-[hsl(258_90%_75%)] to-[hsl(270_75%_60%)] bg-clip-text text-transparent">
+            <span className="block bg-[image:var(--gradient-hero-text)] bg-clip-text text-transparent">
               shipping software
             </span>
             <span className="block text-foreground/95">your business runs on.</span>
@@ -92,7 +134,7 @@ function Hero() {
             <Button
               asChild
               size="lg"
-              className="rounded-full bg-[hsl(258_75%_60%)] px-7 font-semibold text-white shadow-[0_12px_30px_-10px_hsl(258_75%_60%/0.6)] hover:bg-[hsl(258_75%_55%)]"
+              className="rounded-full bg-[image:var(--gradient-brand)] px-7 font-semibold text-white shadow-[var(--shadow-cta)] transition-shadow hover:shadow-[var(--glow-purple)]"
             >
               <a href="#contact">
                 Start a project
@@ -140,7 +182,7 @@ function Hero() {
 function HeroPreview() {
   return (
     <div className="relative animate-in fade-in slide-in-from-bottom-2 duration-700 delay-150 fill-mode-both">
-      <div className="rounded-2xl border border-white/10 bg-[#1a1338]/80 shadow-2xl shadow-black/40 backdrop-blur">
+      <div className="rounded-2xl border border-white/10 bg-[#0c1220]/80 shadow-2xl shadow-black/40 backdrop-blur">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-2.5">
           <div className="flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full bg-red-500/70" />
@@ -246,11 +288,11 @@ function TrustedMarquee() {
           {/* Edge fades — make the wall feel infinite. */}
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-y-0 left-0 z-10 w-24 bg-gradient-to-r from-[#0d0820] to-transparent sm:w-40"
+            className="pointer-events-none absolute inset-y-0 left-0 z-10 w-24 bg-gradient-to-r from-[#000000] to-transparent sm:w-40"
           />
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-y-0 right-0 z-10 w-24 bg-gradient-to-l from-[#0d0820] to-transparent sm:w-40"
+            className="pointer-events-none absolute inset-y-0 right-0 z-10 w-24 bg-gradient-to-l from-[#000000] to-transparent sm:w-40"
           />
 
           {/* The track. width:max-content + duplicated children + -50% */}
@@ -310,6 +352,9 @@ interface Capability {
   title: string;
   body: string;
   to: string;
+  /** Real photo for the card visual. ServiceVisual falls back to its
+   *  gradient placeholder if the URL fails to load. */
+  image: string;
 }
 const CAPABILITIES: Capability[] = [
   {
@@ -317,42 +362,54 @@ const CAPABILITIES: Capability[] = [
     topic: "ai",
     title: "AI & ML models",
     body: "Predictive maintenance, fine-tuned LLMs, RAG over private corpora, and the MLOps to keep them honest.",
-    to: "/services#ai",
+    to: "/services/ai",
+    image:
+      "https://images.unsplash.com/photo-1677442136019-21780ecad995?w=1280&q=80&auto=format&fit=crop",
   },
   {
     Icon: Code2,
     topic: "fullstack",
     title: "Full-stack engineering",
     body: "Production apps in MERN, Python (FastAPI / Django), and Java (Spring Boot). Web, mobile, internal tools.",
-    to: "/services#fullstack",
+    to: "/services/fullstack",
+    image:
+      "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=1280&q=80&auto=format&fit=crop",
   },
   {
     Icon: BarChart3,
     topic: "data",
     title: "Data & analytics",
     body: "ETL/ELT pipelines, warehouses, embedded dashboards, and self-serve analytics for decision-makers.",
-    to: "/services#data",
+    to: "/services/data",
+    image:
+      "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1280&q=80&auto=format&fit=crop",
   },
   {
     Icon: Database,
     topic: "datascience",
     title: "Data science",
     body: "Forecasting, segmentation, causal inference — defensible numbers behind business decisions.",
-    to: "/services#datascience",
+    to: "/services/data-science",
+    image:
+      "https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=1280&q=80&auto=format&fit=crop",
   },
   {
     Icon: Cloud,
     topic: "devops",
     title: "DevOps & cloud",
     body: "Kubernetes, Terraform, GitHub Actions, multi-cloud. Infra that doesn't wake your team up.",
-    to: "/services#devops",
+    to: "/services/devops",
+    image:
+      "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=1280&q=80&auto=format&fit=crop",
   },
   {
     Icon: Layers,
     topic: "products",
     title: "Product engineering",
     body: "0→1 MVPs in 6–10 weeks. Design systems, analytics, runbooks. Hand-off in working code.",
-    to: "/services#products",
+    to: "/services/products",
+    image:
+      "https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1280&q=80&auto=format&fit=crop",
   },
 ];
 
@@ -365,7 +422,7 @@ function ServicesPreview() {
           title={
             <>
               Six capabilities,{" "}
-              <span className="bg-gradient-to-r from-[hsl(258_90%_75%)] to-[hsl(270_75%_60%)] bg-clip-text text-transparent">
+              <span className="bg-[image:var(--gradient-hero-text)] bg-clip-text text-transparent">
                 one senior team.
               </span>
             </>
@@ -384,16 +441,16 @@ function ServicesPreview() {
       </div>
 
       <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {CAPABILITIES.map(({ Icon, topic, title, body, to }) => (
+        {CAPABILITIES.map(({ Icon, topic, title, body, to, image }) => (
           <Link
             key={title}
             to={to}
-            className="group relative overflow-hidden rounded-3xl border border-white/10 bg-[#1a1338]/60 p-4 transition-all hover:-translate-y-0.5 hover:border-white/20 hover:bg-[#221947]/80 hover:shadow-[0_20px_60px_-20px_hsl(258_80%_60%/0.35)]"
+            className="card-sheen group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0c1220]/60 p-4 transition-all hover:-translate-y-0.5 hover:border-white/20 hover:bg-[#181d27]/80 hover:shadow-[0_20px_60px_-20px_hsl(258_80%_60%/0.35)]"
           >
-            <ServiceVisual topic={topic} alt={title} aspect="aspect-[16/9]" />
+            <ServiceVisual topic={topic} image={image} alt={title} aspect="aspect-[16/9]" />
             <div className="px-2 pt-5">
               <div className="flex items-center gap-2">
-                <div className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-[#0d0820] text-[hsl(258_85%_75%)]">
+                <div className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-[#000000] text-[hsl(258_85%_75%)]">
                   <Icon className="h-4 w-4" />
                 </div>
                 <div className="font-display text-lg font-bold tracking-tight">
@@ -425,11 +482,11 @@ function IndustriesPreview() {
           title={
             <>
               Focused on{" "}
-              <span className="bg-gradient-to-r from-[hsl(258_90%_75%)] to-[hsl(270_75%_60%)] bg-clip-text text-transparent">
+              <span className="bg-[image:var(--gradient-hero-text)] bg-clip-text text-transparent">
                 oil & energy
               </span>{" "}
               and{" "}
-              <span className="bg-gradient-to-r from-[hsl(258_90%_75%)] to-[hsl(270_75%_60%)] bg-clip-text text-transparent">
+              <span className="bg-[image:var(--gradient-hero-text)] bg-clip-text text-transparent">
                 e-commerce
               </span>
               .
@@ -454,14 +511,16 @@ function IndustriesPreview() {
           topic="oil"
           title="Oil & energy"
           body="Predictive maintenance for rotating equipment, sensor / SCADA pipelines into time-series stores, field-ops mobile apps for engineers on remote sites, HSE dashboards."
-          to="/industries#oil"
+          to="/industries/oil"
+          image="https://images.unsplash.com/photo-1611273426858-450e7620a915?w=1280&q=80&auto=format&fit=crop"
         />
         <FeaturedIndustryCard
           Icon={ShoppingCart}
           topic="ecommerce"
           title="E-commerce"
           body="Headless storefronts (Next.js / Shopify Hydrogen), payment & subscription billing, recommendation and search models, inventory and returns workflows."
-          to="/industries#ecommerce"
+          to="/industries/ecommerce"
+          image="https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=1280&q=80&auto=format&fit=crop"
         />
       </div>
     </section>
@@ -474,26 +533,28 @@ function FeaturedIndustryCard({
   title,
   body,
   to,
+  image,
 }: {
   Icon: LucideIcon;
   topic: Topic;
   title: string;
   body: string;
   to: string;
+  image?: string;
 }) {
   return (
     <Link
       to={to}
-      className="group relative overflow-hidden rounded-3xl border border-[hsl(258_85%_75%/0.35)] bg-[#1a1338]/60 p-5 shadow-[0_20px_60px_-30px_hsl(258_80%_60%/0.45)] transition-all hover:-translate-y-0.5 hover:border-[hsl(258_85%_75%/0.6)] sm:p-6"
+      className="card-sheen group relative overflow-hidden rounded-3xl border border-[hsl(258_85%_75%/0.35)] bg-[#0c1220]/60 p-5 shadow-[0_20px_60px_-30px_hsl(258_80%_60%/0.45)] transition-all hover:-translate-y-0.5 hover:border-[hsl(258_85%_75%/0.6)] sm:p-6"
     >
       <div
         aria-hidden
         className="pointer-events-none absolute -right-24 -top-24 h-56 w-56 rounded-full bg-[hsl(258_75%_60%/0.18)] blur-2xl"
       />
-      <ServiceVisual topic={topic} alt={title} aspect="aspect-[16/9]" />
+      <ServiceVisual topic={topic} image={image} alt={title} aspect="aspect-[16/9]" />
       <div className="relative px-2 pt-6">
         <div className="flex items-center gap-3">
-          <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-[#0d0820] text-[hsl(258_85%_75%)]">
+          <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-[#000000] text-[hsl(258_85%_75%)]">
             <Icon className="h-5 w-5" />
           </div>
           <div className="font-display text-2xl font-bold tracking-tight">
@@ -524,7 +585,7 @@ function FlagshipProduct() {
           </div>
           <h2 className="mt-4 font-display text-3xl font-bold leading-tight tracking-tight text-balance sm:text-4xl">
             We don't just build for clients —{" "}
-            <span className="bg-gradient-to-r from-[hsl(258_90%_75%)] to-[hsl(270_75%_60%)] bg-clip-text text-transparent">
+            <span className="bg-[image:var(--gradient-hero-text)] bg-clip-text text-transparent">
               we ship our own.
             </span>
           </h2>
@@ -537,7 +598,7 @@ function FlagshipProduct() {
             <Button
               asChild
               size="lg"
-              className="rounded-full bg-[hsl(258_75%_60%)] px-7 font-semibold text-white shadow-[0_12px_30px_-10px_hsl(258_75%_60%/0.6)] hover:bg-[hsl(258_75%_55%)]"
+              className="rounded-full bg-[image:var(--gradient-brand)] px-7 font-semibold text-white shadow-[var(--shadow-cta)] transition-shadow hover:shadow-[var(--glow-purple)]"
             >
               <Link to="/register">
                 Try the workspace <ArrowRight className="ml-1 h-4 w-4" />
@@ -567,7 +628,7 @@ function FlagshipProduct() {
           ].map((label) => (
             <li
               key={label}
-              className="flex items-center gap-2 rounded-2xl border border-white/10 bg-[#1a1338]/40 px-4 py-3 text-sm"
+              className="flex items-center gap-2 rounded-2xl border border-white/10 bg-[#0c1220]/40 px-4 py-3 text-sm"
             >
               <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
               <span className="text-foreground/90">{label}</span>
@@ -588,7 +649,7 @@ function TeamPreview() {
   const preview = [...LEADERSHIP, ...ENGINEERS.slice(0, 5)];
   return (
     <section className="relative mx-auto w-full max-w-7xl px-6 py-20 sm:px-8 lg:px-12">
-      <div className="overflow-hidden rounded-3xl border border-white/10 bg-[#1a1338]/40 p-10 sm:p-14">
+      <div className="overflow-hidden rounded-3xl border border-white/10 bg-[#0c1220]/40 p-10 sm:p-14">
         <div className="grid gap-10 lg:grid-cols-[1fr_1.2fr] lg:items-center lg:gap-14">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[hsl(258_85%_75%)]">
@@ -604,7 +665,7 @@ function TeamPreview() {
             <div className="mt-6">
               <Button
                 asChild
-                className="rounded-full bg-[hsl(258_75%_60%)] px-6 font-semibold text-white shadow-[0_8px_24px_-8px_hsl(258_75%_60%/0.6)] hover:bg-[hsl(258_75%_55%)]"
+                className="rounded-full bg-[image:var(--gradient-brand)] px-6 font-semibold text-white shadow-[var(--shadow-cta)] transition-shadow hover:shadow-[var(--glow-purple)]"
               >
                 <Link to="/team">
                   Meet the full team
@@ -645,7 +706,7 @@ function ContactCta() {
       id="contact"
       className="relative mx-auto w-full max-w-7xl px-6 pb-24 pt-10 sm:px-8 lg:px-12"
     >
-      <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[hsl(258_75%_60%/0.2)] via-[hsl(258_50%_25%/0.25)] to-[#0d0820] p-10 sm:p-14">
+      <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[hsl(258_75%_60%/0.2)] via-[hsl(258_50%_25%/0.25)] to-[#000000] p-10 sm:p-14">
         <div
           aria-hidden
           className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-[hsl(258_75%_60%/0.3)] blur-3xl"

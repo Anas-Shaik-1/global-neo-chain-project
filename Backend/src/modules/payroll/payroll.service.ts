@@ -355,6 +355,20 @@ export async function createPayslip(
   const target = await User.findById(input.userId).select("_id");
   if (!target) throw new NotFoundError("User");
 
+  // Fail fast on duplicate before we spin up a transaction. The unique
+  // compound index `{userId, month}` is the source of truth — this is
+  // belt-and-braces so the user gets a clean 409 instead of a generic
+  // 500 if the index race ever fires after the pre-check.
+  const existing = await Payslip.exists({
+    userId: input.userId,
+    month: input.month,
+  });
+  if (existing) {
+    throw new ConflictError(
+      `A payslip for ${input.month} already exists for this employee. Each month can only be generated once.`,
+    );
+  }
+
   const userObjectId = new Types.ObjectId(input.userId);
   const generatedByObjectId = new Types.ObjectId(generatedById);
   const currency = input.currency ?? "INR";
@@ -440,7 +454,9 @@ export async function createPayslip(
   } catch (err) {
     const e = err as { code?: number };
     if (e.code === 11000) {
-      throw new ConflictError("Payslip already exists for this month");
+      throw new ConflictError(
+        `A payslip for ${input.month} already exists for this employee. Each month can only be generated once.`,
+      );
     }
     if (!isTransactionUnsupportedError(err)) {
       throw err;
@@ -456,7 +472,9 @@ export async function createPayslip(
     } catch (createErr) {
       const ce = createErr as { code?: number };
       if (ce.code === 11000) {
-        throw new ConflictError("Payslip already exists for this month");
+        throw new ConflictError(
+          `A payslip for ${input.month} already exists for this employee. Each month can only be generated once.`,
+        );
       }
       throw createErr;
     }

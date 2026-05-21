@@ -11,50 +11,68 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 195 90% 55%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222 47% 11%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 195 90% 55%;
-    --radius: 0.625rem;
-  }
-
+  /* Single dark-only theme. The internal app uses a deep midnight-navy
+     canvas (rather than pure black) so cards and overlays read as truly
+     elevated surfaces, and the brand-blue primary feels at home rather
+     than fighting an absolute-black backdrop. Landing pages can still
+     override to pure black per-section via their own classes. */
+  :root,
   .dark {
-    --background: 220 20% 5%;
-    --foreground: 210 20% 96%;
-    --card: 220 18% 8%;
-    --card-foreground: 210 20% 96%;
-    --popover: 220 18% 8%;
-    --popover-foreground: 210 20% 96%;
-    --primary: 195 90% 55%;
-    --primary-foreground: 220 20% 5%;
-    --secondary: 220 14% 14%;
-    --secondary-foreground: 210 20% 96%;
-    --muted: 220 14% 12%;
-    --muted-foreground: 215 16% 60%;
-    --accent: 220 14% 14%;
-    --accent-foreground: 210 20% 96%;
-    --destructive: 0 75% 55%;
-    --destructive-foreground: 210 20% 96%;
-    --border: 220 14% 16%;
-    --input: 220 14% 16%;
-    --ring: 195 90% 55%;
-    --radius: 0.625rem;
+    --background: 222 47% 5%;
+    --foreground: 0 0% 100%;
+    --card: 222 32% 10%;
+    --card-foreground: 0 0% 100%;
+    --popover: 222 32% 10%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 222 24% 15%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 222 24% 12%;
+    --muted-foreground: 220 14% 70%;
+    --accent: 222 24% 15%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 222 18% 20%;
+    --input: 222 18% 20%;
+    --ring: 217 91% 60%;
+    --radius: 0.75rem;
+
+    /* GNC brand tokens — internal canvas matches `--background` HSL above
+       (deep midnight navy), keeping cards a step lighter for elevation.
+       The brand gradient stays blue→purple for headline accents and
+       primary CTAs. */
+    --color-bg: #080b16;
+    --color-black: #000000;
+    --color-white: #ffffff;
+    --color-primary: #2563eb;
+    --gnc-bg: #080b16;
+    --gnc-surface: #11172a;       /* one step above bg, cards */
+    --gnc-surface-2: #1a2138;     /* two steps above, hovers/pop */
+    --gnc-border: #2a3350;        /* cool slate border */
+    --gnc-blue: #2563eb;
+    --gnc-blue-lt: #3b82f6;
+    --gnc-purple: #9333ea;
+    --gnc-violet2: #7c3aed;
+    --gnc-cyan: #22d3ee;
+    --surface-1: rgba(255, 255, 255, 0.04);
+    --surface-2: rgba(255, 255, 255, 0.07);
+    --surface-3: rgba(255, 255, 255, 0.02);
+    --border-1: rgba(255, 255, 255, 0.08);
+    --border-2: rgba(255, 255, 255, 0.14);
+    --border-3: rgba(255, 255, 255, 0.22);
+    --fg: #ffffff;
+    --fg-mid: rgba(255, 255, 255, 0.82);
+    --fg-muted: rgba(255, 255, 255, 0.62);
+    --fg-subtle: rgba(255, 255, 255, 0.42);
+    --gradient-brand: linear-gradient(135deg, #2563eb 0%, #9333ea 100%);
+    --gradient-brand-soft: linear-gradient(135deg, rgba(37, 99, 235, 0.16), rgba(147, 51, 234, 0.16));
+    --gradient-hero-text: linear-gradient(90deg, #e0e7ff, #c4b5fd 45%, #60a5fa);
+    --glow-blue: 0 0 40px -4px rgba(37, 99, 235, 0.55);
+    --glow-purple: 0 0 40px -4px rgba(147, 51, 234, 0.55);
+    --shadow-card: 0 20px 60px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    --shadow-cta: 0 16px 36px -10px rgba(124, 58, 237, 0.55), 0 8px 20px -8px rgba(37, 99, 235, 0.55);
   }
 
   * {
@@ -125,52 +143,67 @@
 }
 
 @layer base {
+  /* Midnight-navy canvas with two soft radial washes — a cool blue glow
+     near the top and a faint violet pool in the bottom-right. The
+     gradients are low-opacity and `background-attachment: fixed` so
+     they sit behind the entire app shell without scrolling with content
+     (avoids the cheap-looking "page tile" effect). Components paint
+     their own elevated surfaces on top. */
   body {
+    background-color: var(--color-bg);
     background-image:
-      radial-gradient(at 20% 0%, hsla(195 90% 55% / 0.04) 0px, transparent 50%),
-      radial-gradient(at 80% 100%, hsla(210 90% 50% / 0.04) 0px, transparent 50%);
+      radial-gradient(ellipse 70% 40% at 50% -10%, hsl(217 91% 60% / 0.10), transparent 70%),
+      radial-gradient(ellipse 60% 40% at 100% 110%, hsl(258 75% 60% / 0.07), transparent 70%);
     background-attachment: fixed;
+    background-repeat: no-repeat;
+  }
+
+  /* Thin, restrained scrollbars across the app shell. Default WebKit
+     scrollbars are chunky and inconsistent with the dark canvas; this
+     paints them as a soft white-on-transparent thumb that brightens on
+     hover. Firefox gets the equivalent via `scrollbar-color`. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.12);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.22);
+  }
+
+  /* Tighten the default focus ring on interactive surfaces. Tailwind's
+     `outline-none + focus-visible:ring-2` pattern lives on components,
+     but a baseline catches any element we forgot to style — including
+     async-rendered SVGs. */
+  :focus-visible {
+    outline: 2px solid hsl(var(--primary) / 0.7);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Smooth-scroll on in-page anchor jumps for the internal app. */
+  html {
+    scroll-behavior: smooth;
   }
 }
 
-/* Dashboard widget grid (react-grid-layout) — visual layer.
-   The geometry rules come from the upstream stylesheet imported at the
-   top of this file; everything here just restyles handles + frames so
-   the widgets look native to our dark theme. */
+/* Dashboard widget grid (react-grid-layout) — visual layer. The grid is
+   locked (no drag/resize), so the only rule we still need is the smooth
+   transform transition that the underlying library expects. */
 .widget-grid .react-grid-item {
-  transition-property: transform, box-shadow;
-}
-.widget-grid .react-grid-item.react-grid-placeholder {
-  background: hsl(var(--primary) / 0.18);
-  border: 1px dashed hsl(var(--primary) / 0.6);
-  border-radius: 0.75rem;
-  opacity: 1;
-}
-/* Default RGL resize handle is a tiny right-bottom triangle. Replace it
-   with a circular grip that's only visible while editing (we only inject
-   the handle DOM at all when isResizable=true, so the rule scope below
-   already lines up with edit mode). */
-.widget-grid--editing .react-resizable-handle {
-  width: 18px;
-  height: 18px;
-  bottom: 4px;
-  right: 4px;
-  background-image: none;
-  border-right: 2px solid hsl(var(--primary) / 0.7);
-  border-bottom: 2px solid hsl(var(--primary) / 0.7);
-  border-bottom-right-radius: 4px;
-  cursor: se-resize;
-  opacity: 0.6;
-  transition: opacity 0.15s ease;
-}
-.widget-grid--editing .react-resizable-handle:hover {
-  opacity: 1;
-}
-/* While dragging an item, lift it slightly above the rest. */
-.widget-grid .react-grid-item.react-draggable-dragging {
-  z-index: 30;
-  cursor: grabbing;
-  box-shadow: 0 24px 50px -16px hsl(0 0% 0% / 0.6);
+  transition-property: transform;
 }
 
 /* Continuous horizontal marquee used by the landing page client strip.
@@ -190,5 +223,71 @@
 @media (prefers-reduced-motion: reduce) {
   .animate-marquee-x {
     animation: none;
+  }
+}
+
+/* Landing-page card sheen — a soft diagonal highlight that sweeps across
+   the card the moment it enters the hover state. Honors the dark theme
+   (uses translucent white) and is subtle enough to keep the card content
+   primary. Apply by adding `card-sheen` to a positioned, group element.
+   The overlay is a pseudo-element so it doesn't affect layout. */
+.card-sheen {
+  position: relative;
+}
+.card-sheen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(
+    115deg,
+    transparent 30%,
+    hsla(0 0% 100% / 0.07) 50%,
+    transparent 70%
+  );
+  transform: translateX(-110%);
+  transition: transform 900ms cubic-bezier(0.22, 1, 0.36, 1);
+  z-index: 1;
+}
+.group:hover > .card-sheen::before,
+.card-sheen:hover::before {
+  transform: translateX(110%);
+}
+/* Raise card content above the ::before sheen layer. The `:not(.absolute)`
+   guard skips decorative blur divs (Tailwind's `.absolute`); forcing
+   position:relative on them would put them back into the flow and push
+   sibling content down by their height. */
+.card-sheen > *:not(.absolute) {
+  position: relative;
+  z-index: 2;
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-sheen::before {
+    display: none;
+  }
+}
+
+/* Scroll-into-view fade-up for landing-page sections.
+   The section starts hidden (opacity 0, translated 12px down) and the
+   `is-visible` class triggers the reveal. The component sets `is-visible`
+   when an IntersectionObserver fires, so users on prefers-reduced-motion
+   never see a transition (the reveal still happens, just instantly). */
+.reveal-on-scroll {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 700ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+.reveal-on-scroll.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal-on-scroll {
+    opacity: 1;
+    transform: none;
+    transition: none;
   }
 }

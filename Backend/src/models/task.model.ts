@@ -46,6 +46,19 @@ const taskSchema = new Schema(
       default: null,
       index: true,
     },
+    /**
+     * Optional reverse pointer to the bug this task was created from.
+     * Stamped by `bugs.createTaskFromBug`; lets the kanban / detail view
+     * show a "from bug GNC-foo-abc" chip and link back. Sparse because
+     * the vast majority of tasks aren't bug-linked.
+     */
+    linkedBugId: {
+      type: Schema.Types.ObjectId,
+      ref: "Bug",
+      default: null,
+      index: true,
+      sparse: true,
+    },
   },
   { timestamps: true },
 );

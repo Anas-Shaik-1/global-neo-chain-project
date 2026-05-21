@@ -64,6 +64,20 @@ const bugSchema = new Schema(
       default: null,
       index: true,
     },
+
+    /**
+     * Optional link to the task created to fix this bug. Set by the
+     * "Create task" action on the bug detail; lets the FE render a chip
+     * pointing at the active fix and lets dashboards roll up bugs with
+     * their fix-tasks. Sparse since most bugs aren't linked yet.
+     */
+    linkedTaskId: {
+      type: Schema.Types.ObjectId,
+      ref: "Task",
+      default: null,
+      index: true,
+      sparse: true,
+    },
   },
   { timestamps: true },
 );

@@ -3,7 +3,18 @@ import { cn } from "@/lib/utils";
 
 export const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("rounded-lg border bg-card text-card-foreground shadow-sm", className)} {...props} />
+    <div
+      ref={ref}
+      // Soft gradient from card → slightly cooler card/85 gives every
+      // surface a hint of depth against the pure-black canvas without
+      // shouting; the `shadow-sm + inset hairline` reinforces the
+      // elevation cue without adding a heavy drop.
+      className={cn(
+        "rounded-xl border border-border/70 bg-gradient-to-b from-card to-card/85 text-card-foreground shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.02]",
+        className,
+      )}
+      {...props}
+    />
   ),
 );
 Card.displayName = "Card";

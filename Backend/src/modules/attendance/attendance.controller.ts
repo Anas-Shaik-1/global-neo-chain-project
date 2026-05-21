@@ -6,10 +6,17 @@ export async function postClockIn(req: Request, res: Response, next: NextFunctio
   try {
     if (!req.user) throw new UnauthorizedError();
     const body =
-      (req.validated as { notes?: string; isRemote?: boolean } | undefined) ?? {};
+      (req.validated as {
+        notes?: string;
+        isRemote?: boolean;
+        latitude?: number;
+        longitude?: number;
+      } | undefined) ?? {};
     const entry = await svc.clockIn(req.user.id, {
       notes: body.notes,
       isRemote: body.isRemote,
+      latitude: body.latitude,
+      longitude: body.longitude,
     });
     res.status(201).json(entry);
   } catch (err) {

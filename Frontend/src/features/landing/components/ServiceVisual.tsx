@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   BarChart3,
   Bot,
@@ -96,7 +97,13 @@ export function ServiceVisual({
   const meta = TOPICS[topic];
   const baseCls = `relative overflow-hidden rounded-2xl ${aspect} ${className}`;
 
-  if (image) {
+  // If the real image fails to load (broken URL, network blocked, etc.),
+  // fall through to the gradient + icon placeholder branch below so a card
+  // never renders with a busted-image icon. Tracks the error state per
+  // mounted instance.
+  const [imageFailed, setImageFailed] = useState(false);
+
+  if (image && !imageFailed) {
     return (
       <div className={baseCls}>
         <img
@@ -104,10 +111,11 @@ export function ServiceVisual({
           alt={alt ?? topic}
           className="absolute inset-0 h-full w-full object-cover"
           loading="lazy"
+          onError={() => setImageFailed(true)}
         />
         <div
           aria-hidden
-          className="absolute inset-0 bg-gradient-to-t from-[#0d0820]/60 via-transparent to-transparent"
+          className="absolute inset-0 bg-gradient-to-t from-[#000000]/70 via-[#000000]/20 to-transparent"
         />
       </div>
     );

@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import * as svc from "./bugs.service.js";
-import { CreateBugBody, UpdateBugBody } from "./bugs.schema.js";
+import { CreateBugBody, CreateTaskFromBugBody, UpdateBugBody } from "./bugs.schema.js";
 import { UnauthorizedError, ValidationError } from "../../lib/errors.js";
 import type { BugStatus } from "../../models/bug.model.js";
 
@@ -61,6 +61,27 @@ export async function patchOne(req: Request, res: Response, next: NextFunction) 
     const body = req.validated as z.infer<typeof UpdateBugBody>;
     const updated = await svc.updateBug(id, { id: me.id, role: me.role }, body);
     res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function postCreateTask(req: Request, res: Response, next: NextFunction) {
+  try {
+    const me = requireUser(req);
+    const id = req.params.id;
+    if (typeof id !== "string") throw new ValidationError("id is required");
+    const body = req.validated as z.infer<typeof CreateTaskFromBugBody>;
+    const updated = await svc.createTaskFromBug(
+      id,
+      { id: me.id, role: me.role },
+      {
+        projectId: body.projectId,
+        assigneeId: body.assigneeId ?? null,
+        priority: body.priority,
+      },
+    );
+    res.status(201).json(updated);
   } catch (err) {
     next(err);
   }

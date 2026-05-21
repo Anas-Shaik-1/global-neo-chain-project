@@ -1,11 +1,9 @@
 import { useState } from "react";
-import { LogOut, Menu, Moon, ShieldCheck, Sun, User } from "lucide-react";
+import { LogOut, Menu, ShieldCheck, User } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "@/app/hooks";
-import { themeChanged } from "@/features/ui/uiSlice";
 import { logoutThunk } from "@/features/auth/authThunks";
 import { NotificationsPanel } from "@/features/notifications/NotificationsPanel";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -27,7 +25,6 @@ import { SidebarNav } from "./SidebarNav";
 export function Topbar() {
   const dispatch = useAppDispatch();
   const user = useAppSelector((s) => s.auth.user);
-  const theme = useAppSelector((s) => s.ui.theme);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const initials =
@@ -39,28 +36,28 @@ export function Topbar() {
       .toUpperCase() ?? "??";
 
   return (
-    <header className="relative z-30 flex h-20 shrink-0 items-center gap-3 border-b border-border/60 bg-card px-4 sm:px-6 lg:px-8">
+    <header className="relative z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border/60 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 px-4 sm:px-6 lg:px-8">
       {/* Mobile menu trigger */}
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetTrigger asChild>
           <Button
             variant="ghost"
             size="icon"
-            className="lg:hidden"
+            className="h-9 w-9 lg:hidden"
             aria-label="Open menu"
           >
             <Menu className="h-5 w-5" />
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="w-[280px] p-0">
-          <div className="flex h-16 items-center border-b border-border/60 px-4">
+          <div className="flex h-14 items-center border-b border-border/60 px-4">
             <Link
               to="/"
-              className="flex items-center gap-3"
+              className="flex items-center gap-2.5"
               onClick={() => setMobileOpen(false)}
             >
-              <img src="/logo.png" alt="" className="h-8 w-8 shrink-0" />
-              <span className="font-display text-base font-semibold tracking-tight">
+              <img src="/logo.png" alt="" className="h-7 w-7 shrink-0" />
+              <span className="font-display text-sm font-semibold tracking-tight">
                 Global NeoChain
               </span>
             </Link>
@@ -71,52 +68,31 @@ export function Topbar() {
         </SheetContent>
       </Sheet>
 
-      {/* Brand block — left aligned */}
+      {/* Brand block — left aligned, compact */}
       <Link
         to="/"
-        className="flex min-w-0 items-center gap-3 rounded-md outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-primary"
+        className="group/brand flex min-w-0 items-center gap-2.5 rounded-md outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-primary"
       >
         <img
           src="/logo.png"
           alt=""
-          className="h-10 w-10 shrink-0 sm:h-12 sm:w-12"
+          className="h-7 w-7 shrink-0"
         />
-        <div className="flex min-w-0 flex-col leading-tight">
-          <span className="truncate font-display text-xl font-bold tracking-tight text-primary sm:text-2xl">
-            Global NeoChain
-          </span>
-          <span className="hidden truncate text-xs text-muted-foreground sm:block">
-            Employee Management System · Indonesian professionals
-          </span>
-        </div>
+        <span className="truncate font-display text-[15px] font-semibold tracking-tight text-foreground">
+          Global NeoChain
+        </span>
+        <span
+          aria-hidden
+          className="hidden font-mono text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground/70 sm:inline"
+        >
+          · EMS
+        </span>
       </Link>
 
       <div className="flex-1" />
 
       {/* Action cluster */}
-      <div className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Toggle theme"
-          onClick={() => dispatch(themeChanged(theme === "dark" ? "light" : "dark"))}
-          className="relative"
-        >
-          <Sun
-            className={cn(
-              "h-4 w-4 transition-all duration-300",
-              theme === "dark" ? "scale-100 rotate-0" : "scale-0 -rotate-90",
-            )}
-          />
-          <Moon
-            className={cn(
-              "absolute h-4 w-4 transition-all duration-300",
-              theme === "dark" ? "scale-0 rotate-90" : "scale-100 rotate-0",
-            )}
-          />
-          <span className="sr-only">Toggle theme</span>
-        </Button>
-
+      <div className="flex items-center gap-1.5">
         <NotificationsPanel />
 
         {/* Profile cluster — name + role visible on sm+, avatar always */}
@@ -124,20 +100,20 @@ export function Topbar() {
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              className="h-12 gap-3 px-2 sm:px-3"
+              className="h-9 gap-2.5 px-1.5 sm:pl-2 sm:pr-2.5"
               aria-label="Account menu"
             >
               <div className="hidden flex-col items-end leading-tight sm:flex">
-                <span className="truncate text-sm font-semibold text-foreground">
+                <span className="truncate text-[13px] font-semibold text-foreground">
                   {user?.name}
                 </span>
-                <span className="truncate text-[11px] uppercase tracking-wider text-muted-foreground">
+                <span className="truncate font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">
                   {user?.role}
                   {user?.isProjectManager ? " · PM" : ""}
                 </span>
               </div>
-              <Avatar className="h-9 w-9 ring-2 ring-primary/40">
-                <AvatarFallback className="bg-primary/15 text-xs font-semibold text-primary">
+              <Avatar className="h-7 w-7 ring-1 ring-primary/40">
+                <AvatarFallback className="bg-primary/15 text-[10px] font-semibold text-primary">
                   {initials}
                 </AvatarFallback>
               </Avatar>

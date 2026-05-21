@@ -72,7 +72,7 @@ export function TeamPage() {
             title={
               <>
                 Meet the people who{" "}
-                <span className="bg-gradient-to-r from-[hsl(258_90%_75%)] to-[hsl(270_75%_60%)] bg-clip-text text-transparent">
+                <span className="bg-[image:var(--gradient-hero-text)] bg-clip-text text-transparent">
                   ship the work.
                 </span>
               </>
@@ -87,7 +87,7 @@ export function TeamPage() {
         <TeamRow eyebrow="Engineering" title="Building the product." members={ENGINEERS} />
         <TeamRow eyebrow="Associates" title="Carrying the bench." members={ASSOCIATES} />
 
-        <div className="mt-20 overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[hsl(258_75%_60%/0.18)] via-[hsl(258_50%_25%/0.2)] to-[#0d0820] p-10 text-center sm:p-14">
+        <div className="mt-20 overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[hsl(258_75%_60%/0.18)] via-[hsl(258_50%_25%/0.2)] to-[#000000] p-10 text-center sm:p-14">
           <h3 className="font-display text-2xl font-bold tracking-tight sm:text-3xl">
             Want to join us?
           </h3>
@@ -99,7 +99,7 @@ export function TeamPage() {
             <Button
               asChild
               size="lg"
-              className="rounded-full bg-[hsl(258_75%_60%)] px-7 font-semibold text-white shadow-[0_12px_30px_-10px_hsl(258_75%_60%/0.6)] hover:bg-[hsl(258_75%_55%)]"
+              className="rounded-full bg-[image:var(--gradient-brand)] px-7 font-semibold text-white shadow-[var(--shadow-cta)] transition-shadow hover:shadow-[var(--glow-purple)]"
             >
               <a href="mailto:careers@global-neochain.com">
                 Email careers@global-neochain.com

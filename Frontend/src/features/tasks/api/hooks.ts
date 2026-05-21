@@ -2,6 +2,7 @@ import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import axios from "axios";
 import { toast } from "sonner";
 import { getApi } from "@/api/axios";
+import { dashboardKeys } from "@/features/dashboard/api/hooks";
 
 const api = () => getApi();
 
@@ -175,6 +176,9 @@ export function useCreateTask() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: taskKeys.all });
       qc.invalidateQueries({ queryKey: projectKeys.all });
+      // Dashboard "Open tasks" widget reads from a separate endpoint —
+      // invalidate it so the count stays in lock-step with this mutation.
+      qc.invalidateQueries({ queryKey: dashboardKeys.all });
       toast.success("Task created");
     },
     onError: (err) => toast.error(errorMessage(err, "Could not create task")),
@@ -200,6 +204,9 @@ export function useUpdateTask(id: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: taskKeys.all });
       if (id) qc.invalidateQueries({ queryKey: taskKeys.activity(id) });
+      // Status changes flip a task in/out of the "open tasks" bucket the
+      // dashboard counts. Invalidate so the widget catches the move.
+      qc.invalidateQueries({ queryKey: dashboardKeys.all });
       toast.success("Task updated");
     },
     onError: (err) => toast.error(errorMessage(err, "Could not update task")),

@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/form";
 import { useAppSelector } from "@/app/hooks";
 import { AuthShell } from "../components/AuthShell";
+import { ZohoSignInButton } from "../components/ZohoSignInButton";
 import { useRegister, useRegistrationStatus, type ApprovalStatus } from "../api/hooks";
 import {
   RegisterSchema,
@@ -306,6 +307,16 @@ export function RegisterPage() {
                   {register.isPending ? "Submitting…" : "Submit application"}
                 </Button>
               </div>
+
+              <div className="flex items-center gap-3 pt-1">
+                <span className="h-px flex-1 bg-border/50" />
+                <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-muted-foreground/60">
+                  or
+                </span>
+                <span className="h-px flex-1 bg-border/50" />
+              </div>
+
+              <ZohoSignInButton mode="signup" />
             </form>
           </Form>
         </>

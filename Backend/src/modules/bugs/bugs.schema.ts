@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { registry } from "../../openapi/registry.js";
 import { BUG_STATUSES } from "../../models/bug.model.js";
+import { TASK_PRIORITIES, TASK_STATUSES } from "../../models/task.model.js";
 
 const objectIdString = z
   .string()
@@ -20,6 +21,12 @@ export const BugResponse = z
     projectId: z.string().nullable(),
     projectName: z.string().nullable(),
     projectKey: z.string().nullable(),
+    /** Linked Task created via "Create task" — null until the bug is
+     *  promoted. Title + status mirrored so the FE can render a chip
+     *  without a second API call. */
+    linkedTaskId: z.string().nullable(),
+    linkedTaskTitle: z.string().nullable(),
+    linkedTaskStatus: z.enum(TASK_STATUSES).nullable(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
@@ -52,6 +59,15 @@ export const UpdateBugBody = z
     projectId: objectIdString.nullable().optional(),
   })
   .openapi("UpdateBugBody");
+
+export const CreateTaskFromBugBody = z
+  .object({
+    /** Optional override; defaults to the bug's projectId if it has one. */
+    projectId: objectIdString.optional(),
+    assigneeId: objectIdString.nullable().optional(),
+    priority: z.enum(TASK_PRIORITIES).optional(),
+  })
+  .openapi("CreateTaskFromBugBody");
 
 export const ListBugsQuery = z.object({
   page: z.coerce.number().int().positive().optional(),
@@ -113,6 +129,23 @@ registry.registerPath({
   responses: {
     200: { description: "Updated bug", ...json(BugResponse) },
     403: { description: "Only the bug's reporter or an ADMIN can edit", ...json(ErrorResponse) },
+    404: { description: "Not found", ...json(ErrorResponse) },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/bugs/{id}/create-task",
+  tags: [tag],
+  security: sec,
+  request: {
+    params: z.object({ id: objectIdString }),
+    body: { content: { "application/json": { schema: CreateTaskFromBugBody } } },
+  },
+  responses: {
+    201: { description: "Bug now linked to a new Task", ...json(BugResponse) },
+    400: { description: "Already linked / no project to file into", ...json(ErrorResponse) },
+    403: { description: "Only the bug's reporter or an Admin", ...json(ErrorResponse) },
     404: { description: "Not found", ...json(ErrorResponse) },
   },
 });
