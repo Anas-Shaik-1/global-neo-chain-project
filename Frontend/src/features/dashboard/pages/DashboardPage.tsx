@@ -79,7 +79,10 @@ function formatHoursMinutes(totalMinutes: number): string {
 function formatTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function formatRelative(iso: string | null): string {
@@ -121,7 +124,11 @@ function MetricTodayStatus({ data }: { data: EmployeeStats | undefined }) {
   return (
     <MetricCard
       label="Today's status"
-      value={<span className="text-xl">{describeAttendance(data.todayAttendance)}</span>}
+      value={
+        <span className="text-xl">
+          {describeAttendance(data.todayAttendance)}
+        </span>
+      }
       icon={<Clock className="h-5 w-5" />}
       accent
     />
@@ -133,7 +140,11 @@ function MetricHoursThisMonth({ data }: { data: EmployeeStats | undefined }) {
   return (
     <MetricCard
       label="Hours this month"
-      value={<span className="font-mono">{formatHoursMinutes(data.monthHoursMinutes)}</span>}
+      value={
+        <span className="font-mono">
+          {formatHoursMinutes(data.monthHoursMinutes)}
+        </span>
+      }
       hint={`${data.monthDaysWorked} days worked`}
       icon={<Calendar className="h-5 w-5" />}
     />
@@ -157,7 +168,11 @@ function MetricApprovedExpenses({ data }: { data: EmployeeStats | undefined }) {
   return (
     <MetricCard
       label="My approved expenses"
-      value={<span className="font-mono">{formatCents(data.myApprovedExpensesThisMonth)}</span>}
+      value={
+        <span className="font-mono">
+          {formatCents(data.myApprovedExpensesThisMonth)}
+        </span>
+      }
       hint="This month"
       icon={<Receipt className="h-5 w-5" />}
     />
@@ -185,7 +200,10 @@ function CardLatestPayslip({ data }: { data: EmployeeStats | undefined }) {
               <div className="text-sm text-muted-foreground">
                 Net{" "}
                 <span className="font-mono text-foreground">
-                  {formatCents(data.latestPayslip.netAmount, data.latestPayslip.currency)}
+                  {formatCents(
+                    data.latestPayslip.netAmount,
+                    data.latestPayslip.currency,
+                  )}
                 </span>
               </div>
             </div>
@@ -263,10 +281,7 @@ function CardRecentActivity() {
         ) : (
           <ul className="divide-y divide-border/60">
             {items.map((n) => (
-              <li
-                key={n.id}
-                className="flex items-start gap-3 py-2 text-sm"
-              >
+              <li key={n.id} className="flex items-start gap-3 py-2 text-sm">
                 <span
                   aria-hidden
                   className={
@@ -279,7 +294,9 @@ function CardRecentActivity() {
                     <div
                       className={
                         "truncate " +
-                        (n.readAt ? "text-foreground/80" : "font-semibold text-foreground")
+                        (n.readAt
+                          ? "text-foreground/80"
+                          : "font-semibold text-foreground")
                       }
                     >
                       {n.title}
@@ -321,7 +338,11 @@ function relativeFromIso(iso: string): string {
 
 // ─── HR widgets ───────────────────────────────────────────────────────────
 
-function MetricTotalEmployees({ data }: { data: HrStats | AdminStats | undefined }) {
+function MetricTotalEmployees({
+  data,
+}: {
+  data: HrStats | AdminStats | undefined;
+}) {
   if (!data) return <MetricSkeleton />;
   const active = "activeEmployees" in data ? data.activeEmployees : undefined;
   return (
@@ -397,13 +418,18 @@ function CardDeptBreakdown({ data }: { data: HrStats | undefined }) {
             return (
               <ul className="space-y-3">
                 {data.departmentBreakdown.map((d) => {
-                  const pct = maxCount > 0 ? Math.round((d.employeeCount / maxCount) * 100) : 0;
+                  const pct =
+                    maxCount > 0
+                      ? Math.round((d.employeeCount / maxCount) * 100)
+                      : 0;
                   return (
                     <li key={d.departmentId} className="space-y-1">
                       <div className="flex items-center justify-between text-sm">
                         <div className="flex items-center gap-2">
                           <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                          <span className="font-medium">{d.departmentName}</span>
+                          <span className="font-medium">
+                            {d.departmentName}
+                          </span>
                         </div>
                         <span className="font-mono text-muted-foreground">
                           {d.employeeCount}
@@ -485,7 +511,11 @@ function MetricOpenTasksAdmin({ data }: { data: AdminStats | undefined }) {
   );
 }
 
-function MetricPendingExpensesAdmin({ data }: { data: AdminStats | undefined }) {
+function MetricPendingExpensesAdmin({
+  data,
+}: {
+  data: AdminStats | undefined;
+}) {
   if (!data) return <MetricSkeleton />;
   return (
     <MetricCard
@@ -599,7 +629,14 @@ interface TrendCardProps {
   loading: boolean;
 }
 
-function TrendCard({ title, data, total, color, formatValue, loading }: TrendCardProps) {
+function TrendCard({
+  title,
+  data,
+  total,
+  color,
+  formatValue,
+  loading,
+}: TrendCardProps) {
   return (
     <Card className="h-full border-border/60 bg-card/40">
       <CardHeader className="pb-3">
@@ -628,7 +665,11 @@ function TrendCard({ title, data, total, color, formatValue, loading }: TrendCar
           </div>
         ) : (
           <div className="flex-1 min-h-[160px]">
-            <MetricChart data={data ?? []} color={color} formatValue={formatValue} />
+            <MetricChart
+              data={data ?? []}
+              color={color}
+              formatValue={formatValue}
+            />
           </div>
         )}
       </CardContent>
@@ -659,7 +700,10 @@ function CardTrendsHeader({
         <p className="text-xs text-muted-foreground">
           Working hours, expenses, and payroll over time.
         </p>
-        <Tabs value={granularity} onValueChange={(v) => onChange(v as Granularity)}>
+        <Tabs
+          value={granularity}
+          onValueChange={(v) => onChange(v as Granularity)}
+        >
           <TabsList className="h-8 w-full">
             <TabsTrigger value="day" className="h-7 flex-1 text-xs">
               Daily
@@ -699,7 +743,10 @@ interface WidgetCtx {
  * smaller breakpoints (md/sm/xs/xxs) are derived in WidgetGrid so we don't
  * have to maintain four separate layouts by hand.
  */
-function buildWidgets(role: string | undefined, ctx: WidgetCtx): DashboardWidget[] {
+function buildWidgets(
+  role: string | undefined,
+  ctx: WidgetCtx,
+): DashboardWidget[] {
   const trendWorkingHours: DashboardWidget = {
     id: "trend.workingHours",
     label: "Working hours",
@@ -935,7 +982,14 @@ export function DashboardPage() {
       granularity,
       setGranularity,
     }),
-    [employee.data, hr.data, admin.data, charts.data, charts.isLoading, granularity],
+    [
+      employee.data,
+      hr.data,
+      admin.data,
+      charts.data,
+      charts.isLoading,
+      granularity,
+    ],
   );
 
   const widgets = useMemo(() => buildWidgets(role, ctx), [role, ctx]);
@@ -1076,8 +1130,8 @@ export function DashboardPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Reset dashboard layout?</AlertDialogTitle>
             <AlertDialogDescription>
-              This restores the default arrangement and sizes for every
-              widget. Your saved positions for the{" "}
+              This restores the default arrangement and sizes for every widget.
+              Your saved positions for the{" "}
               <span className="font-medium text-foreground">
                 {role?.toLowerCase() ?? "default"}
               </span>{" "}

@@ -39,6 +39,7 @@ export interface DashboardWidget {
 
 interface WidgetGridProps {
   widgets: DashboardWidget[];
+  storageKey: string;
 }
 
 const BREAKPOINTS = { lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 } as const;
