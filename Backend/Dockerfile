@@ -2,17 +2,15 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
-
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+COPY package.json ./
+RUN npm install
 
 COPY tsconfig.json ./
 COPY src ./src
 COPY scripts ./scripts
-RUN pnpm exec tsc -p tsconfig.json && mkdir -p dist/assets && node scripts/copy-assets.mjs
+RUN npm run build
 
-RUN pnpm install --prod --frozen-lockfile
+RUN npm prune --omit=dev
 
 # ─── runtime stage ────────────────────────────────────────────────────────────
 FROM node:22-alpine AS runtime
