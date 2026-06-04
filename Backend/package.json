@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc -p tsconfig.json && node -e \"require('fs').cpSync('src/assets', 'dist/assets', { recursive: true })\"",
+    "build": "tsc -p tsconfig.json && mkdir -p dist/assets && node scripts/copy-assets.mjs",
     "start": "node dist/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
