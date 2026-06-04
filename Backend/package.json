@@ -40,7 +40,10 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "bcrypt"
+      "@scarf/scarf",
+      "bcrypt",
+      "esbuild",
+      "mongodb-memory-server"
     ]
   },
   "devDependencies": {
